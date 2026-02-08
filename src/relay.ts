@@ -1,84 +1,53 @@
 import { Command } from 'commander';
-import path from 'path';
-import { bootstrap } from './bootstrap';
+import { architectRelay, engineerRelay } from './bootstrap';
 import { RelayContext } from './core/context';
 import { ConsoleLogger } from './core/logger';
 import { ConsoleRelayAgent } from './core/agent';
 import { StateManager } from './core/state';
 import { LockManager } from './core/lock';
-import { registry } from './core/transition';
 import { AuditLogger } from './core/audit';
+import path from 'path';
 
 const program = new Command();
+const workDir = process.cwd();
 
-program
-    .name('relay')
-    .description('AI Agent Relay Protocol')
-    .version('1.0.0');
-
-// Persona Commands
-program
-    .command('achitect')
-    .alias('architect') // Fix typo/alias
-    .description('Run as Architect')
-    .option('--approve', 'Approve the current work')
-    .option('--reject', 'Reject the current work')
-    .action(async (options) => {
-        await runRelay('architect', options);
-    });
-
-program
-    .command('engineer')
-    .description('Run as Engineer')
-    .option('--submit', 'Submit the completed work')
-    .action(async (options) => {
-        await runRelay('engineer', options);
-    });
-
-// Init Command
-program
-    .option('--init <goal>', 'Initialize Relay with a goal')
-    .action(async (options) => {
-        if (options.init) {
-            await runRelay('system', { ...options, action: 'init', goal: options.init });
-        }
-    });
-
-async function runRelay(persona: string, options: any) {
-    const workDir = process.cwd();
-    bootstrap(); // Register flows
-
+async function run(persona: string, args: any) {
     const logger = new ConsoleLogger();
     const lock = new LockManager(workDir);
-    const stateManager = new StateManager(workDir);
+    const state = new StateManager(workDir);
     const audit = new AuditLogger(workDir);
 
     try {
         await lock.acquire();
 
-        // Load State
-        const state = await stateManager.load();
-
-        // Determine Action
-        let action = 'check'; // Default pulse action
-        if (options.approve) action = 'approve';
-        if (options.reject) action = 'reject';
-        if (options.submit) action = 'submit';
-        if (options.action) action = options.action; // Override for system commands
-
-        const handler = registry.get(persona, action);
-        if (!handler) {
-            throw new Error(`No handler found for [${persona}]:${action}`);
+        // Handle Init
+        if (args.init) {
+            const memory = {
+                taskStatus: 'pending',
+                currentTask: {
+                    id: '1',
+                    description: args.init,
+                    status: 'pending'
+                },
+                iteration: 0,
+                lastUpdate: Date.now(),
+                stepIndex: 0,
+                hasRunSystemPrompt: false
+            };
+            await state.save(memory);
+            console.log(`[RELAY] Initialized with goal: ${args.init}`);
+            return;
         }
 
-        // Build Context
+        const memory = await state.load();
+
         const ctx: RelayContext = {
             id: 'session',
             persona,
-            memory: state,
+            memory,
             logger,
             agent: new ConsoleRelayAgent(logger, persona),
-            args: options,
+            args,
             paths: {
                 workDir,
                 reportFile: path.join(workDir, 'engineer_report.md'),
@@ -86,28 +55,28 @@ async function runRelay(persona: string, options: any) {
             }
         };
 
-        // Execute Transition
-        logger.info(`[RELAY] ${persona.toUpperCase()} -> ${action.toUpperCase()}`);
-        await handler(ctx);
+        const relay = persona === 'architect' ? architectRelay : engineerRelay;
+        await relay(ctx);
 
-        // Persist State & Audit
-        await stateManager.save(ctx.memory);
-        await audit.log(`${persona}:${action}`, {
-            args: options,
-            memorySnapshot: ctx.memory
-        });
+        await state.save(ctx.memory);
+        await audit.log(`${persona}:pulse`, { stepIndex: ctx.memory.stepIndex });
 
-    } catch (error: any) {
-        logger.error(`FATAL: ${error.message}`);
+    } catch (e: any) {
+        logger.error(e.message);
         process.exit(1);
     } finally {
         await lock.release();
     }
 }
 
-program.parse(process.argv);
+program.command('architect').action((opts) => run('architect', opts));
+program.command('engineer').action((opts) => run('engineer', opts));
 
-// If no args, show help
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
-}
+program
+    .command('init')
+    .argument('<goal>', 'Project goal')
+    .action(async (goal) => {
+        await run('system', { init: goal });
+    });
+
+program.parse(process.argv);
