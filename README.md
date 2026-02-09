@@ -1,8 +1,8 @@
-# Relay
+# Orchestrator Relay
 
 **Government-Grade AI Agent Orchestration.**
 
-Relay is a "Zero Trust" agentic workflow engine designed for high-stakes software development. It enforces a strict separation of concerns between **Architect** (Planning & Oversight) and **Engineer** (Execution & Implementation), ensuring that no code is written without a directive, and no directive is finalized without verification.
+Orchestrator Relay is a "Zero Trust" agentic workflow engine designed for high-stakes software development. It enforces a strict separation of concerns between **Architect** (Planning & Oversight) and **Engineer** (Execution & Implementation), ensuring that no code is written without a directive, and no directive is finalized without verification.
 
 > **"Trust, but verify. Then verify again."**
 
@@ -10,11 +10,11 @@ Relay is a "Zero Trust" agentic workflow engine designed for high-stakes softwar
 
 ## 🚀 Philosophy
 
-Relay is built on three core pillars:
+Orchestrator Relay is built on three core pillars:
 
 1.  **Zero Trust Architecture**: The system assumes the AI Engineer will make mistakes,hallucinate, or drift from the plan. The Architect's sole job is to catch these errors *before* they are committed.
 2.  **One-Shot Execution**: Agents do not run in infinite loops. They execute one atomic "Act" (planning or coding), save their state, and exit. This forces human-in-the-loop review at critical checkpoints.
-3.  **State Resilience**: The entire workflow state is persisted to disk (`state.json`). If the process crashes, the power fails, or the network drops, Relay resumes exactly where it left off.
+3.  **State Resilience**: The entire workflow state is persisted to disk (`state.json`). If the process crashes, the power fails, or the network drops, Orchestrator Relay resumes exactly where it left off.
 
 ---
 
@@ -35,7 +35,7 @@ npm install -D orchestrator-relay
 ## 🛠️ Usage
 
 ### 1. Initialize a Project
-Turn any directory into a Relay-managed project. This creates the `.relay` directory, installs the strict `CODING_GUIDELINES.md`, and sets up the project structure.
+Turn any directory into a Orchestrator Relay-managed project. This creates the `.relay` directory, installs the strict `CODING_GUIDELINES.md`, and sets up the project structure.
 
 ```bash
 cd my-project
@@ -43,7 +43,7 @@ relay init
 ```
 
 ### 2. Add a Feature
-Relay organizes work into **Features**. A feature is a distinct unit of functionality with its own **Plan**, **Tasks**, and **State**.
+Orchestrator Relay organizes work into **Features**. A feature is a distinct unit of functionality with its own **Plan**, **Tasks**, and **State**.
 
 ```bash
 relay add my-feature
@@ -55,7 +55,7 @@ You will be prompted to define:
 
 ### 3. The Workflow (The Loop)
 
-Relay operates in a semi-autonomous loop. You are the **Orchestrator**.
+Orchestrator Relay operates in a semi-autonomous loop. You are the **Orchestrator**.
 
 #### **Act 1: The Architect (Planning)**
 The Architect reviews the current state and issues a **Directive**.
@@ -92,18 +92,18 @@ relay architect my-feature
 
 ## 🧠 System Prompts & Customization
 
-Relay comes with "Government-Grade" default personas (Zero Trust Architect, Precision Engineer). You can customize them.
+Orchestrator Relay comes with "Government-Grade" default personas (Zero Trust Architect, Precision Engineer). You can customize them.
 
 1.  **Create Custom Prompts**:
     Create `.relay/prompts/architect.md` or `.relay/prompts/engineer.md`.
-    Relay will automatically prefer these over the built-in defaults.
+    Orchestrator Relay will automatically prefer these over the built-in defaults.
 
 2.  **Edit the Pipeline (`bootstrap.mjs`)**:
     The `.relay/bootstrap.mjs` file defines the exact steps the agents take. You can add your own steps!
 
     ```javascript
     // .relay/bootstrap.mjs
-    export const engineer = createRelay({
+    export const engineer = createOrchestrator Relay({
         steps: [
             systemPrompt('engineer'),
             loop([
@@ -122,7 +122,7 @@ Relay comes with "Government-Grade" default personas (Zero Trust Architect, Prec
 
 ## 🛡️ Hardening Features
 
-Relay is designed to survive hostile environments.
+Orchestrator Relay is designed to survive hostile environments.
 
 *   **Concurrency Locking**: Uses `LockManager` to prevent race conditions. You cannot run `architect` and `engineer` simultaneously on the same feature.
 *   **Crash Recovery**: All state is saved *after* every agent execution.
@@ -157,7 +157,7 @@ my-project/
 
 | Command | Description |
 | :--- | :--- |
-| `relay init` | Initialize Relay in the current directory. |
+| `relay init` | Initialize Orchestrator Relay in the current directory. |
 | `relay add <name>` | Create a new feature workspace. |
 | `relay architect <feature>` | Run the Architect agent to plan or review work. |
 | `relay engineer <feature>` | Run the Engineer agent to execute the directive. |
@@ -166,4 +166,4 @@ my-project/
 
 ---
 
-**Relay** © 2026 @tsomaia.tech. Built for the paranoid.
+© 2026 @tsomaia.tech. Built for the paranoid.
