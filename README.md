@@ -53,37 +53,40 @@ You will be prompted to define:
 *   **Goal**: What does this feature achieve?
 *   **Tasks**: Initial breakdown of work.
 
-### 3. The Human Protocol (The Loop)
+### 3. The Workflow (The Loop)
 
-Relay creates a **collaborative loop** between you (the Human) and the Agents. You are the trigger. You are the verify-er.
+Relay operates in a semi-autonomous loop. You are the **Orchestrator**.
 
-**The Golden Rule**: Never run Relay in a background loop. Run it once, read the output, perform the required action, and run it again.
+#### **Act 1: The Architect (Planning)**
+The Architect reviews the current state and issues a **Directive**.
 
-#### **Phase 1: Initialization**
-When you run `relay init`, Relay creates a `.relay` directory. This is the **Control Center**.
-*   **`bootstrap.mjs`**: Defines the "Pipeline" (what steps the agents take).
-*   **`prompts/`**: (Optional) Folder where you can override the default System Prompts for `architect.md` and `engineer.md`.
+```bash
+relay architect my-feature
+```
+*   **Human Role**: Read the Directive. Ensure it aligns with your goals.
+    *   *If good*: Proceed.
+    *   *If bad*: Reject/Edit it.
 
-#### **Phase 2: The Action Loop**
+#### **Act 2: The Engineer (Execution)**
+The Engineer implements the changes and runs tests.
 
-1.  **Trigger Architect**: `relay architect <feature>`
-    *   **Agent Action**: Reads your `plan.md` and current code.
-    *   **Agent Output**: Writes a **Directive** file (e.g., `exchange/001-001-architect.md`).
-    *   **Human Action**: Read the Directive. Does it make sense? Is it safe?
-        *   *If yes*: Do nothing. Proceed to Engineer.
-        *   *If no*: Edit the Directive file directly to correct the Architect, or run `relay architect` again to regenerate.
+```bash
+relay engineer my-feature
+```
+*   **Human Role**: Trigger the agent.
+    *   The Engineer will write code and run verification commands (tests).
+    *   **Orchestrator Check**: Did the agent report success? If yes, proceed.
 
-2.  **Trigger Engineer**: `relay engineer <feature>`
-    *   **Agent Action**: Reads the **Directive**. Implements the code. Runs tests.
-    *   **Agent Output**: Writes a **Report** file (e.g., `exchange/001-001-engineer.md`) and updates `state.json`.
-    *   **Human Action**: **VERIFY**. Run the tests yourself. Open the app.
-        *   *If broken*: Do not proceed. The Engineer failed.
-        *   *If working*: Proceed to Architect for approval.
+#### **Act 3: The Architect (Review)**
+The Architect reviews the Engineer's report and test results.
 
-3.  **Trigger Architect (Review)**: `relay architect <feature>`
-    *   **Agent Action**: Reads the Engineer's **Report**. Checks constraints.
-    *   **Agent Output**: Writes a **Verdict** (APPROVE or REJECT).
-    *   **System Action**: If `APPROVE`, the feature status is updated to `approved`. The loop ends.
+```bash
+relay architect my-feature
+```
+*   **Human Role**: Trigger the review.
+*   **System Action**: The Architect decides:
+    *   **APPROVE**: The task is done. The loop ends.
+    *   **REJECT**: The loop repeats (Back to Act 1).
 
 ---
 
