@@ -22,12 +22,12 @@ Relay is built on three core pillars:
 
 ### Global Install (Recommended for CLI usage)
 ```bash
-npm install -g @tsomaia/relay
+npm install -g orchestrator-relay
 ```
 
 ### Local Project Install
 ```bash
-npm install -D @tsomaia/relay
+npm install -D orchestrator-relay
 ```
 
 ---

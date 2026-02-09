@@ -4,11 +4,11 @@
  * This file defines the behavior of the Architect and Engineer agents.
  * 
  * To customize:
- * 1. Ensure @tsomaia/relay is installed: npm install -D @tsomaia/relay
+ * 1. Ensure orchestrator-relay is installed: npm install -D orchestrator-relay
  * 2. Modify the pipelines below
  */
 
-import { createRelay, loop } from '@tsomaia/relay/dist/core/runner.js';
+import { createRelay, loop } from 'orchestrator-relay/dist/core/runner.js';
 import {
     systemPrompt,
     lookupTask,
@@ -17,7 +17,7 @@ import {
     readReport,
     archiveFile,
     promptWrite
-} from '@tsomaia/relay/dist/steps/standard.js';
+} from 'orchestrator-relay/dist/steps/standard.js';
 
 /**
  * Architect Pipeline

@@ -127,9 +127,9 @@ program
             try {
                 const pkg = await fs.readJson(pkgPath);
                 const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
-                if (!deps['@tsomaia/relay']) {
+                if (!deps['orchestrator-relay']) {
                     console.log(`\n⚠️  IMPORTANT: Install the package to use the default bootstrap:`);
-                    console.log(`   npm install -D @tsomaia/relay`);
+                    console.log(`   npm install -D orchestrator-relay`);
                     console.log(`   (or yarn add -D / pnpm add -D)`);
                 }
             } catch (e) {

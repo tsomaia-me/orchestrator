@@ -1,6 +1,6 @@
 # How to Publish Relay
 
-Follow these steps to publish `@tsomaia/relay` to NPM.
+Follow these steps to publish `orchestrator-relay` to NPM.
 
 ## 1. Prerequisites
 Ensure you are logged in to NPM.
