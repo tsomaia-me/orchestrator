@@ -14,7 +14,8 @@
   "files": [
     "bin/",
     "dist/",
-    "prompts/"
+    "prompts/",
+    "templates/"
   ],
   "keywords": [
     "relay",

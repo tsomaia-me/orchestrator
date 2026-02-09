@@ -35,46 +35,162 @@ program
     .version('2.0.0');
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INIT COMMANDS
+// HELPER: Get package root (where templates/prompts live)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getPackageRoot(): string {
+    // From dist/cli.js, go up to package root
+    return path.join(__dirname, '..');
+}
+
+function toSlug(name: string): string {
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT COMMAND
 // ═══════════════════════════════════════════════════════════════════════════
 
 program
-    .command('init [feature]')
-    .description('Initialize .relay folder or create a new feature')
-    .action(async (featureName?: string) => {
-        if (featureName) {
-            // Create feature in existing .relay
-            const projectRoot = requireRelayRoot();
-
-            try {
-                await createFeature(projectRoot, featureName);
-                console.log(`✓ Created feature: ${featureName}`);
-                console.log(`  → ${getFeatureDir(projectRoot, featureName)}`);
-                console.log(`\nNext steps:`);
-                console.log(`  1. Edit plan.md with your architectural plan`);
-                console.log(`  2. Create tasks in tasks/ folder (001-xxx.md)`);
-                console.log(`  3. Run: relay architect`);
-            } catch (e: any) {
-                console.error(`Error: ${e.message}`);
-                process.exit(1);
-            }
-        } else {
-            // Create .relay folder
-            const root = findRelayRoot();
-            if (root) {
-                console.log(`Already initialized: ${getRelayDir(root)}`);
-                return;
-            }
-
-            const relayDir = getRelayDir(process.cwd());
-            await fs.ensureDir(path.join(relayDir, 'features'));
-            await fs.ensureDir(path.join(relayDir, 'archive'));
-            await fs.ensureDir(path.join(relayDir, 'prompts'));
-
-            console.log(`✓ Initialized: ${relayDir}`);
-            console.log(`\nNext steps:`);
-            console.log(`  relay init <feature>  - Create a feature`);
+    .command('init')
+    .description('Initialize .relay folder in current directory')
+    .action(async () => {
+        const root = findRelayRoot();
+        if (root) {
+            console.log(`Already initialized: ${getRelayDir(root)}`);
+            return;
         }
+
+        const relayDir = getRelayDir(process.cwd());
+        const packageRoot = getPackageRoot();
+
+        // Create directories
+        await fs.ensureDir(path.join(relayDir, 'features'));
+        await fs.ensureDir(path.join(relayDir, 'archive'));
+        await fs.ensureDir(path.join(relayDir, 'prompts'));
+
+        // Copy default prompts
+        const defaultPromptsDir = path.join(packageRoot, 'prompts');
+        if (await fs.pathExists(defaultPromptsDir)) {
+            await fs.copy(
+                path.join(defaultPromptsDir, 'architect.md'),
+                path.join(relayDir, 'prompts', 'architect.md')
+            );
+            await fs.copy(
+                path.join(defaultPromptsDir, 'engineer.md'),
+                path.join(relayDir, 'prompts', 'engineer.md')
+            );
+        }
+
+        // Copy plan template
+        const templatePath = path.join(packageRoot, 'templates', 'plan.template.md');
+        if (await fs.pathExists(templatePath)) {
+            await fs.copy(templatePath, path.join(relayDir, 'plan.template.md'));
+        }
+
+        // Copy compiled bootstrap
+        const bootstrapPath = path.join(packageRoot, 'dist', 'bootstrap.js');
+        if (await fs.pathExists(bootstrapPath)) {
+            await fs.copy(bootstrapPath, path.join(relayDir, 'bootstrap.js'));
+        }
+
+        console.log(`✓ Initialized: ${relayDir}`);
+        console.log(`\nContents:`);
+        console.log(`  prompts/architect.md  - Architect system prompt`);
+        console.log(`  prompts/engineer.md   - Engineer system prompt`);
+        console.log(`  plan.template.md      - Template for feature plans`);
+        console.log(`  bootstrap.js          - Pipeline customization`);
+        console.log(`\nNext: relay add <feature-name>`);
+    });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADD COMMAND (Create Feature)
+// ═══════════════════════════════════════════════════════════════════════════
+
+program
+    .command('add <name>')
+    .description('Create a new feature')
+    .option('--custom', 'Include feature-level prompts for customization')
+    .action(async (name: string, options: { custom?: boolean }) => {
+        const projectRoot = requireRelayRoot();
+        const slug = toSlug(name);
+        const featureDir = getFeatureDir(projectRoot, slug);
+        const relayDir = getRelayDir(projectRoot);
+        const packageRoot = getPackageRoot();
+
+        if (await fs.pathExists(featureDir)) {
+            console.error(`Feature '${slug}' already exists.`);
+            process.exit(1);
+        }
+
+        // Create directories
+        await fs.ensureDir(path.join(featureDir, 'tasks'));
+        await fs.ensureDir(path.join(featureDir, 'exchange'));
+
+        // Copy plan template (priority: .relay > default)
+        let planTemplate: string;
+        const relayTemplate = path.join(relayDir, 'plan.template.md');
+        const defaultTemplate = path.join(packageRoot, 'templates', 'plan.template.md');
+
+        if (await fs.pathExists(relayTemplate)) {
+            planTemplate = await fs.readFile(relayTemplate, 'utf-8');
+        } else if (await fs.pathExists(defaultTemplate)) {
+            planTemplate = await fs.readFile(defaultTemplate, 'utf-8');
+        } else {
+            planTemplate = `# ${name}\n\n## Overview\n\n[Describe feature]\n`;
+        }
+
+        // Replace placeholder with actual name
+        const plan = planTemplate.replace(/\[Feature Name\]/g, name);
+        await fs.writeFile(path.join(featureDir, 'plan.md'), plan);
+
+        // Create initial state
+        const state = {
+            currentTask: '',
+            currentTaskSlug: '',
+            iteration: 0,
+            lastAuthor: null,
+            status: 'pending',
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        await fs.writeJson(path.join(featureDir, 'state.json'), state, { spaces: 2 });
+
+        // If --custom, copy prompts from .relay/prompts
+        if (options.custom) {
+            await fs.ensureDir(path.join(featureDir, 'prompts'));
+            const relayPrompts = path.join(relayDir, 'prompts');
+
+            if (await fs.pathExists(path.join(relayPrompts, 'architect.md'))) {
+                await fs.copy(
+                    path.join(relayPrompts, 'architect.md'),
+                    path.join(featureDir, 'prompts', 'architect.md')
+                );
+            }
+            if (await fs.pathExists(path.join(relayPrompts, 'engineer.md'))) {
+                await fs.copy(
+                    path.join(relayPrompts, 'engineer.md'),
+                    path.join(featureDir, 'prompts', 'engineer.md')
+                );
+            }
+        }
+
+        console.log(`✓ Created feature: ${slug}`);
+        console.log(`  → ${featureDir}`);
+        console.log(`\nCreated:`);
+        console.log(`  plan.md       - Edit with architectural plan`);
+        console.log(`  tasks/        - Add task files (001-xxx.md)`);
+        console.log(`  exchange/     - Agent communication`);
+        if (options.custom) {
+            console.log(`  prompts/      - Feature-specific prompts`);
+        }
+        console.log(`\nNext:`);
+        console.log(`  1. Edit plan.md`);
+        console.log(`  2. Create tasks in tasks/ (e.g., 001-setup.md)`);
+        console.log(`  3. Run: relay architect`);
     });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -90,7 +206,7 @@ program
 
         if (features.length === 0) {
             console.log('No features found.');
-            console.log('Create one with: relay init <feature>');
+            console.log('Create one with: relay add <name>');
             return;
         }
 
@@ -160,7 +276,7 @@ program
         const features = await listFeatures(projectRoot);
 
         if (features.length === 0) {
-            console.error('No features found. Create one with: relay init <feature>');
+            console.error('No features found. Create one with: relay add <name>');
             process.exit(1);
         }
 
@@ -229,9 +345,6 @@ program
         state.lastAuthor = 'architect';
         state.status = 'in_progress';
         await saveFeatureState(projectRoot, featureName, state);
-
-        // Load prompt
-        const prompt = await resolvePrompt(projectRoot, 'architect', featureName);
 
         // Output directive context
         console.log('\n═══════════════════════════════════════════════════════════════════════════════');
@@ -307,9 +420,6 @@ program
             console.error('No current task. State may be corrupted.');
             process.exit(1);
         }
-
-        // Load prompt
-        const prompt = await resolvePrompt(projectRoot, 'engineer', featureName);
 
         // Get report path
         const { path: reportPath, iteration } = await getNextExchangePath(
