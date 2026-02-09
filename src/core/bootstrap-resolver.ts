@@ -10,7 +10,7 @@ export interface BootstrapModule {
 /**
  * Get the package's default bootstrap
  */
-function getDefaultBootstrap(): BootstrapModule {
+async function getDefaultBootstrap(): Promise<BootstrapModule> {
     // Import the compiled default bootstrap
     // This will be at dist/bootstrap.js
     const possiblePaths = [
@@ -20,7 +20,9 @@ function getDefaultBootstrap(): BootstrapModule {
 
     for (const p of possiblePaths) {
         try {
-            return require(p);
+            // Use import() to support both CJS and ESM
+            const mod = await import(p);
+            return mod.default || mod;
         } catch {
             continue;
         }
@@ -40,35 +42,49 @@ export async function resolveBootstrap(
     featureName?: string
 ): Promise<{ module: BootstrapModule; path: string; level: 'feature' | 'relay' | 'default' }> {
 
+    // Extensions to check (mjs first for ESM priority)
+    const extensions = ['.mjs', '.js', '.ts'];
+
     // Level 1: Feature-level
     if (featureName) {
-        const featurePath = path.join(getFeatureDir(projectRoot, featureName), 'bootstrap.js');
-        if (await fs.pathExists(featurePath)) {
-            try {
-                const module = require(featurePath) as BootstrapModule;
-                validateBootstrap(module, 'feature');
-                return { module, path: featurePath, level: 'feature' };
-            } catch (e: any) {
-                throw new Error(`Invalid feature bootstrap: ${e.message}`);
+        const featureDir = getFeatureDir(projectRoot, featureName);
+        for (const ext of extensions) {
+            const featurePath = path.join(featureDir, `bootstrap${ext}`);
+            if (await fs.pathExists(featurePath)) {
+                try {
+                    // Use import() - handles ESM (.mjs) and CJS (.js)
+                    const relativePath = path.isAbsolute(featurePath) ? featurePath : path.resolve(featurePath);
+                    const mod = await import(relativePath);
+                    const module = mod.default || mod;
+                    validateBootstrap(module, 'feature');
+                    return { module, path: featurePath, level: 'feature' };
+                } catch (e: any) {
+                    throw new Error(`Invalid feature bootstrap at ${featurePath}: ${e.message}`);
+                }
             }
         }
     }
 
     // Level 2: Relay-level
-    const relayPath = path.join(getRelayDir(projectRoot), 'bootstrap.js');
-    if (await fs.pathExists(relayPath)) {
-        try {
-            const module = require(relayPath) as BootstrapModule;
-            validateBootstrap(module, 'relay');
-            return { module, path: relayPath, level: 'relay' };
-        } catch (e: any) {
-            throw new Error(`Invalid relay bootstrap: ${e.message}`);
+    const relayDir = getRelayDir(projectRoot);
+    for (const ext of extensions) {
+        const relayPath = path.join(relayDir, `bootstrap${ext}`);
+        if (await fs.pathExists(relayPath)) {
+            try {
+                const relativePath = path.isAbsolute(relayPath) ? relayPath : path.resolve(relayPath);
+                const mod = await import(relativePath);
+                const module = mod.default || mod;
+                validateBootstrap(module, 'relay');
+                return { module, path: relayPath, level: 'relay' };
+            } catch (e: any) {
+                throw new Error(`Invalid relay bootstrap at ${relayPath}: ${e.message}`);
+            }
         }
     }
 
     // Level 3: Default
     try {
-        const module = getDefaultBootstrap();
+        const module = await getDefaultBootstrap();
         return { module, path: 'default', level: 'default' };
     } catch (e: any) {
         throw new Error(`Default bootstrap not found: ${e.message}`);

@@ -46,9 +46,13 @@ export const lookupTask = () => step('lookupTask', async (ctx) => {
     }
 
     // Log current task if exists
-    if (ctx.memory.currentTask) {
-        ctx.logger.info(`[TASK] ${ctx.memory.currentTask.description} (${ctx.memory.taskStatus})`);
+    if (ctx.currentTask) {
+        ctx.logger.info(`[TASK] ${ctx.currentTask.title} (${ctx.memory.taskStatus})`);
+    } else if (ctx.memory.currentTask) {
+        ctx.logger.info(`[TASK] ${ctx.memory.currentTask} (${ctx.memory.taskStatus})`);
     }
+
+    return 'CONTINUE';
 
     return 'CONTINUE';
 });
@@ -61,6 +65,8 @@ export const lookupTask = () => step('lookupTask', async (ctx) => {
 export const awaitFile = (filePathKey: 'reportFile' | 'directiveFile') =>
     step(`awaitFile:${filePathKey}`, async (ctx) => {
         const filePath = ctx.paths[filePathKey];
+        if (!filePath) return 'CONTINUE';
+
         const hashKey = filePathKey === 'reportFile' ? 'lastReportHash' : 'lastDirectiveHash';
         const fileName = path.basename(filePath);
 
@@ -86,6 +92,8 @@ export const awaitFile = (filePathKey: 'reportFile' | 'directiveFile') =>
  * Validate and read the Engineer's report
  */
 export const readReport = () => step('readReport', async (ctx) => {
+    if (!ctx.paths.reportFile) return 'CONTINUE';
+
     const validator = new Validator();
 
     try {
@@ -130,6 +138,7 @@ export const readDirective = () => step('readDirective', async (ctx) => {
 export const archiveFile = (filePathKey: 'reportFile' | 'directiveFile') =>
     step(`archiveFile:${filePathKey}`, async (ctx) => {
         const filePath = ctx.paths[filePathKey];
+        if (!filePath) return 'CONTINUE';
 
         if (await fs.pathExists(filePath)) {
             const archivePath = `${filePath}.archived.${Date.now()}`;

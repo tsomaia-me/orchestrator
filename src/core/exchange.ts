@@ -50,8 +50,10 @@ export async function getNextExchangePath(
         }
     } else {
         // Engineer uses same iteration as the directive they're responding to
-        if (state.lastAuthor === 'architect') {
-            // Same iteration as the directive
+        // If last author was architect: normal flow
+        // If last author was engineer: retry flow
+        if (state.lastAuthor === 'architect' || state.lastAuthor === 'engineer') {
+            // Same iteration as the directive (or retry)
             iteration = state.iteration;
         } else {
             throw new Error('Cannot write report: no directive to respond to');
@@ -87,11 +89,16 @@ export async function getLatestExchangeToRead(
     // Reader reads from the OTHER author
     const author = reader === 'architect' ? 'engineer' : 'architect';
 
-    // For architect reading engineer's report: same iteration
-    // For engineer reading architect's directive: current iteration
-    const iteration = state.iteration;
+    // For architect reading engineer's report:
+    // - If last author was engineer, read current iteration
+    // - If last author was architect (retry/in-progress), read previous iteration
+    let targetIteration = state.iteration;
 
-    if (iteration === 0) {
+    if (reader === 'architect' && state.lastAuthor === 'architect') {
+        targetIteration = state.iteration - 1;
+    }
+
+    if (targetIteration < 1) {
         return null; // No exchanges yet
     }
 
@@ -100,7 +107,7 @@ export async function getLatestExchangeToRead(
         featureName,
         state.currentTask,
         state.currentTaskSlug,
-        iteration,
+        targetIteration,
         author
     );
 }
