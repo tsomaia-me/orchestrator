@@ -199,11 +199,50 @@ Review the engineer's report against this task's acceptance criteria.
 `;
         }
 
+        // Inject Reinforcement Points (Hardening)
+        if (role === 'ARCHITECT') {
+            prompt += `
+───────────────────────────────────────────────────────────────────────────────
+                            IMPORTANT REMINDERS
+───────────────────────────────────────────────────────────────────────────────
+1. TRUST NOTHING. Assume the Engineer's code is broken.
+2. VERIFY EVERYTHING. Don't just read it; prove it works.
+3. ZERO TOLERANCE. If you find a single flaw, REJECT. Do not "fix it later".
+4. YOU ARE THE GATEKEEPER. Bad code results in mission failure.
+`;
+        } else if (role === 'ENGINEER') {
+            prompt += `
+───────────────────────────────────────────────────────────────────────────────
+                            IMPORTANT REMINDERS
+───────────────────────────────────────────────────────────────────────────────
+1. OBEY THE DIRECTIVE. Do not improvise.
+2. VERIFY YOUR WORK. Unverified code is broken code.
+3. REPORT REALITY. If it fails, report FAILED. Do not lie.
+`;
+        }
+
         prompt += `
+───────────────────────────────────────────────────────────────────────────────
+
 When finished: ./relay.sh ${role.toLowerCase()}
 
 ═══════════════════════════════════════════════════════════════════════════════
 `;
+
+        // Inject Coding Guidelines (if present in .relay root)
+        // workDir is features/<feature>, so .relay is ../..
+        const relayDir = path.resolve(ctx.paths.workDir, '..', '..');
+        const guidelinesPath = path.join(relayDir, 'CODING_GUIDELINES.md');
+
+        if (await fs.pathExists(guidelinesPath)) {
+            const guidelines = await fs.readFile(guidelinesPath, 'utf-8');
+            prompt += `
+───────────────────────────────────────────────────────────────────────────────
+                            CODING GUIDELINES
+───────────────────────────────────────────────────────────────────────────────
+${guidelines}
+`;
+        }
 
         ctx.agent.tell(prompt);
 

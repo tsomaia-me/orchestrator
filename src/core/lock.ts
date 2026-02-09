@@ -1,86 +1,63 @@
 import fs from 'fs-extra';
 import path from 'path';
 
-const LOCK_FILE = '.relay/lock';
-const STALE_THRESHOLD_MS = 10000; // 10 seconds
-
 export class LockManager {
     private lockPath: string;
+    private lockId: string;
+    private hasLock: boolean = false;
 
-    constructor(workDir: string) {
-        this.lockPath = path.join(workDir, LOCK_FILE);
+    constructor(dir: string, lockName: string = 'relay.lock') {
+        this.lockPath = path.join(dir, lockName);
+        // Unique ID for this process instance to verify ownership
+        this.lockId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     }
 
     /**
-     * Acquires the lock. Throws if locked.
-     * Handles stale locks (older than 10s).
-     * Writes PID for debugging purposes.
+     * Acquire the lock. Throws if already locked.
+     * @param timeoutMs Max time to wait for lock (default 0 = fail immediately)
      */
-    async acquire(): Promise<void> {
-        await fs.ensureDir(path.dirname(this.lockPath));
+    async acquire(timeoutMs: number = 0): Promise<void> {
+        const start = Date.now();
 
-        try {
-            // Check if lock exists
-            if (await fs.pathExists(this.lockPath)) {
-                const stats = await fs.stat(this.lockPath);
-                const age = Date.now() - stats.mtimeMs;
-
-                if (age > STALE_THRESHOLD_MS) {
-                    // Break stale lock
-                    await fs.unlink(this.lockPath);
-                } else {
-                    const owner = await this.getOwner();
-                    throw new Error(
-                        `Relay is locked by PID ${owner || 'unknown'}. ` +
-                        `Lock age: ${age}ms. Wait or run: ./relay.sh reset`
-                    );
+        while (true) {
+            try {
+                // Exclusive creation flag (wx) fails if file exists
+                await fs.writeFile(this.lockPath, this.lockId, { flag: 'wx' });
+                this.hasLock = true;
+                return;
+            } catch (e: any) {
+                if (e.code !== 'EEXIST') {
+                    throw e; // Unexpected error
                 }
-            }
 
-            // Write PID to file for debugging
-            await fs.writeFile(this.lockPath, String(process.pid), { flag: 'wx' });
-        } catch (error: any) {
-            if (error.code === 'EEXIST') {
-                throw new Error('Relay is locked. Race condition detected. Try again.');
+                // Check if stale? (Simple version: just check age)
+                // For government reliability, we avoid auto-breaking locks unless specific override used.
+
+                if (Date.now() - start >= timeoutMs) {
+                    throw new Error(`Could not acquire lock at ${this.lockPath}. Another process is running.`);
+                }
+
+                // Wait and retry
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
-            throw error;
         }
     }
 
     /**
-     * Releases the lock.
+     * Release the lock. Only if we own it.
      */
     async release(): Promise<void> {
-        try {
-            if (await fs.pathExists(this.lockPath)) {
-                await fs.unlink(this.lockPath);
-            }
-        } catch (error) {
-            // Ignore errors on release (e.g. if already missing)
-        }
-    }
+        if (!this.hasLock) return;
 
-    /**
-     * Get the PID of the process holding the lock.
-     */
-    async getOwner(): Promise<number | null> {
         try {
-            if (!await fs.pathExists(this.lockPath)) {
-                return null;
+            const currentId = await fs.readFile(this.lockPath, 'utf-8');
+            if (currentId === this.lockId) {
+                await fs.remove(this.lockPath);
             }
-            const content = await fs.readFile(this.lockPath, 'utf-8');
-            const pid = parseInt(content.trim(), 10);
-            return isNaN(pid) ? null : pid;
-        } catch {
-            return null;
+        } catch (e) {
+            // Ignore if file already gone
+        } finally {
+            this.hasLock = false;
         }
-    }
-
-    /**
-     * Check if lock exists.
-     */
-    async isLocked(): Promise<boolean> {
-        return fs.pathExists(this.lockPath);
     }
 }
-

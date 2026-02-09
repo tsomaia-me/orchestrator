@@ -1,7 +1,7 @@
 import { RelayLogger } from './logger';
 import { RelayAgent } from './agent';
 import { RelayState } from './state';
-import { RelayConfig, TaskFile } from './config';
+import { FeatureState, TaskFile } from './feature';
 
 export interface RelayContext {
     id: string; // Session ID
@@ -22,9 +22,11 @@ export interface RelayContext {
         directiveFile: string;
     };
 
-    // Config and task context (for auto-mode)
-    config?: RelayConfig;
+    // Task context (unified with Feature definitions)
     currentTask?: TaskFile;
     plan?: string;
+
+    // Feature context
+    featureState?: FeatureState;
 }
 

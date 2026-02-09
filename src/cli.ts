@@ -30,14 +30,18 @@ import { RelayContext } from './core/context';
 import { ConsoleLogger } from './core/logger';
 import { ConsoleRelayAgent } from './core/agent';
 import { StateManager } from './core/state';
+import { LockManager } from './core/lock';
 import { randomUUID } from 'crypto';
+
+// Load package.json for version check
+const pkg = require('../package.json');
 
 const program = new Command();
 
 program
     .name('relay')
-    .description('Agent-to-agent coordination relay')
-    .version('2.0.0');
+    .description('Agent-to-agent coordination relay (Government Hardened)')
+    .version(pkg.version);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Get package root (where templates/prompts live)
@@ -105,10 +109,34 @@ program
 
         console.log(`✓ Initialized: ${relayDir}`);
         console.log(`\nContents:`);
-        console.log(`  prompts/architect.md  - Architect system prompt`);
         console.log(`  prompts/engineer.md   - Engineer system prompt`);
         console.log(`  plan.template.md      - Template for feature plans`);
         console.log(`  bootstrap.mjs         - Pipeline customization`);
+
+        // Copy Coding Guidelines
+        const guidelinesPath = path.join(packageRoot, 'templates', 'CODING_GUIDELINES.md');
+        if (await fs.pathExists(guidelinesPath)) {
+            await fs.copy(guidelinesPath, path.join(relayDir, 'CODING_GUIDELINES.md'));
+            console.log(`  CODING_GUIDELINES.md  - Project coding standards`);
+        }
+
+
+        // Check for dependency
+        const pkgPath = path.join(process.cwd(), 'package.json');
+        if (await fs.pathExists(pkgPath)) {
+            try {
+                const pkg = await fs.readJson(pkgPath);
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies };
+                if (!deps['@tsomaia/relay']) {
+                    console.log(`\n⚠️  IMPORTANT: Install the package to use the default bootstrap:`);
+                    console.log(`   npm install -D @tsomaia/relay`);
+                    console.log(`   (or yarn add -D / pnpm add -D)`);
+                }
+            } catch (e) {
+                // Ignore error reading package.json
+            }
+        }
+
         console.log(`\nNext: relay add <feature-name>`);
     });
 
@@ -304,96 +332,112 @@ program
         }
 
         const feature = await getFeature(projectRoot, featureName!);
+        const featureDir = getFeatureDir(projectRoot, featureName!);
 
         if (feature.tasks.length === 0) {
             console.error(`No tasks in ${featureName}. Create tasks in tasks/ folder.`);
             process.exit(1);
         }
 
-        let taskId = taskArg;
-        if (!taskId) {
-            // Ask for task
-            const answer = await inquirer.prompt({
-                type: 'list',
-                name: 'taskId',
-                message: 'TASK?',
-                choices: feature.tasks.map(t => ({
-                    name: `${t.id}: ${t.title}`,
-                    value: t.id
-                }))
-            });
-            taskId = answer.taskId;
-        }
-
-        const task = feature.tasks.find(t => t.id === taskId);
-        if (!task) {
-            console.error(`Task ID '${taskId}' not found.`);
-            process.exit(1);
-        }
-
-        const featureDir = getFeatureDir(projectRoot, featureName!);
-
-        // Get report path (for review context)
-        const reportPath = await getLatestExchangeToRead(projectRoot, featureName!, 'architect');
-
-        // Get next exchange path
-        const { path: exchangePath, iteration } = await getNextExchangePath(
-            projectRoot, featureName!, 'architect'
-        ).catch(() => {
-            // First directive for this task
-            return {
-                path: path.join(
-                    getFeatureDir(projectRoot, featureName!),
-                    'exchange',
-                    `${task.id}-001-architect-${task.slug}.md`
-                ),
-                iteration: 1
-            };
-        });
-
-        // Load persistence
-        const stateManager = new StateManager(featureDir);
-        const memory = await stateManager.load();
-
-        // Update memory
-        memory.currentTask = task.id;
-        memory.currentTaskSlug = task.slug;
-        if (memory.lastAuthor !== 'architect' || memory.currentTask !== task.id) {
-            memory.iteration = iteration;
-        }
-        memory.lastAuthor = 'architect';
-        memory.status = 'in_progress';
-        await stateManager.save(memory);
-
-        // Files
-        const reportFile = reportPath || '';
-
-        const ctx: RelayContext = {
-            id: randomUUID(),
-            persona: 'architect',
-            memory,
-            logger: new ConsoleLogger(),
-            agent: new ConsoleRelayAgent(new ConsoleLogger(), 'architect'),
-            args: { feature: featureName, task: taskId },
-            paths: {
-                workDir: featureDir,
-                directiveFile: exchangePath,
-                reportFile: reportFile
-            },
-            currentTask: task as any,
-            plan: feature.plan || ''
-        };
-
-        // Resolve Bootstrap
-        const bootstrap = await resolveBootstrap(projectRoot, featureName!);
-        console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
-
-        // Execute Pipeline
+        // 🔒 ACQUIRE LOCK
+        const lock = new LockManager(featureDir);
         try {
-            await bootstrap.module.architect(ctx);
+            await lock.acquire(2000); // 2s timeout
         } catch (e: any) {
-            console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
+            console.error(`\n🔒 [LOCKED] Failed to acquire lock for feature '${featureName}'.`);
+            console.error(`   Another Relay process is running.`);
             process.exit(1);
+        }
+
+        try {
+            let taskId = taskArg;
+            if (!taskId) {
+                // Ask for task
+                const answer = await inquirer.prompt({
+                    type: 'list',
+                    name: 'taskId',
+                    message: 'TASK?',
+                    choices: feature.tasks.map(t => ({
+                        name: `${t.id}: ${t.title}`,
+                        value: t.id
+                    }))
+                });
+                taskId = answer.taskId;
+            }
+
+            const task = feature.tasks.find(t => t.id === taskId);
+            if (!task) {
+                console.error(`Task ID '${taskId}' not found.`);
+                process.exit(1);
+            }
+
+            // Get report path (for review context)
+            const reportPath = await getLatestExchangeToRead(projectRoot, featureName!, 'architect');
+
+            // Get next exchange path
+            const { path: exchangePath, iteration } = await getNextExchangePath(
+                projectRoot, featureName!, 'architect'
+            ).catch(() => {
+                // First directive for this task
+                return {
+                    path: path.join(
+                        getFeatureDir(projectRoot, featureName!),
+                        'exchange',
+                        `${task.id}-001-architect-${task.slug}.md`
+                    ),
+                    iteration: 1
+                };
+            });
+
+            // Load persistence
+            const stateManager = new StateManager(featureDir);
+            const memory = await stateManager.load();
+
+            // Update memory
+            memory.currentTask = task.id;
+            memory.currentTaskSlug = task.slug;
+            if (memory.lastAuthor !== 'architect' || memory.currentTask !== task.id) {
+                memory.iteration = iteration;
+            }
+            memory.lastAuthor = 'architect';
+            memory.status = 'in_progress';
+            await stateManager.save(memory);
+
+            // Files
+            const reportFile = reportPath || '';
+
+            const ctx: RelayContext = {
+                id: randomUUID(),
+                persona: 'architect',
+                memory,
+                logger: new ConsoleLogger(),
+                agent: new ConsoleRelayAgent(new ConsoleLogger(), 'architect'),
+                args: { feature: featureName, task: taskId },
+                paths: {
+                    workDir: featureDir,
+                    directiveFile: exchangePath,
+                    reportFile: reportFile
+                },
+                currentTask: task, // No "as any"!
+                plan: feature.plan || '',
+                featureState: memory // Full state access
+            };
+
+            // Resolve Bootstrap
+            const bootstrap = await resolveBootstrap(projectRoot, featureName!);
+            console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
+
+            // Execute Pipeline
+            try {
+                await bootstrap.module.architect(ctx);
+            } catch (e: any) {
+                console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
+                process.exit(1);
+            }
+
+        } finally {
+            // 🔓 RELEASE LOCK
+            await lock.release();
         }
     });
 
@@ -429,78 +473,95 @@ program
         const feature = await getFeature(projectRoot, featureName!);
         const featureDir = getFeatureDir(projectRoot, featureName!);
 
-        const stateManager = new StateManager(featureDir);
-        const memory = await stateManager.load();
-
-        // Ensure state is valid
-        if (!memory.currentTask) {
-            console.error('No current task selected. Architect must run first.');
-            process.exit(1);
-        }
-
-        const task = feature.tasks.find(t => t.id === memory.currentTask);
-        if (!task) {
-            console.error(`Task ${memory.currentTask} not found in tasks folder.`);
-            process.exit(1);
-        }
-
-        // Directive to read
-        const directivePath = await getLatestExchangeToRead(projectRoot, featureName!, 'engineer');
-
-        if (!directivePath || !await fs.pathExists(directivePath)) {
-            console.log('\n═══════════════════════════════════════');
-            console.log('         WAITING FOR DIRECTIVE          ');
-            console.log('═══════════════════════════════════════');
-            console.log(`\nNo directive found for ${featureName!}.`);
-            console.log('Architect must first run: relay architect');
-            console.log('═══════════════════════════════════════\n');
-        }
-
-        // If directive missing, calculate expected path
-        let targetDirectivePath = directivePath;
-        if (!targetDirectivePath) {
-            // Predict: <taskId>-<iter>-architect-<slug>.md
-            targetDirectivePath = path.join(featureDir, 'exchange',
-                `${task.id}-${String(memory.iteration).padStart(3, '0')}-architect-${task.slug}.md`
-            );
-        }
-
-        // Get report path
-        const { path: reportPath, iteration } = await getNextExchangePath(
-            projectRoot, featureName!, 'engineer'
-        );
-
-        // Update memory
-        memory.lastAuthor = 'engineer';
-        memory.iteration = iteration;
-        await stateManager.save(memory);
-
-        const ctx: RelayContext = {
-            id: randomUUID(),
-            persona: 'engineer',
-            memory,
-            logger: new ConsoleLogger(),
-            agent: new ConsoleRelayAgent(new ConsoleLogger(), 'engineer'),
-            args: { feature: featureName },
-            paths: {
-                workDir: featureDir,
-                directiveFile: targetDirectivePath!,
-                reportFile: reportPath
-            },
-            currentTask: task as any,
-            plan: feature.plan || ''
-        };
-
-        // Resolve Bootstrap
-        const bootstrap = await resolveBootstrap(projectRoot, featureName!);
-        console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
-
-        // Execute Pipeline
+        // 🔒 ACQUIRE LOCK
+        const lock = new LockManager(featureDir);
         try {
-            await bootstrap.module.engineer(ctx);
+            await lock.acquire(2000); // 2s timeout
         } catch (e: any) {
-            console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
+            console.error(`\n🔒 [LOCKED] Failed to acquire lock for feature '${featureName}'.`);
+            console.error(`   Another Relay process is running.`);
             process.exit(1);
+        }
+
+        try {
+            const stateManager = new StateManager(featureDir);
+            const memory = await stateManager.load();
+
+            // Ensure state is valid
+            if (!memory.currentTask) {
+                console.error('No current task selected. Architect must run first.');
+                process.exit(1);
+            }
+
+            const task = feature.tasks.find(t => t.id === memory.currentTask);
+            if (!task) {
+                console.error(`Task ${memory.currentTask} not found in tasks folder.`);
+                process.exit(1);
+            }
+
+            // Directive to read
+            const directivePath = await getLatestExchangeToRead(projectRoot, featureName!, 'engineer');
+
+            if (!directivePath || !await fs.pathExists(directivePath)) {
+                console.log('\n═══════════════════════════════════════');
+                console.log('         WAITING FOR DIRECTIVE          ');
+                console.log('═══════════════════════════════════════');
+                console.log(`\nNo directive found for ${featureName!}.`);
+                console.log('Architect must first run: relay architect');
+                console.log('═══════════════════════════════════════\n');
+            }
+
+            // If directive missing, calculate expected path
+            let targetDirectivePath = directivePath;
+            if (!targetDirectivePath) {
+                // Predict: <taskId>-<iter>-architect-<slug>.md
+                targetDirectivePath = path.join(featureDir, 'exchange',
+                    `${task.id}-${String(memory.iteration).padStart(3, '0')}-architect-${task.slug}.md`
+                );
+            }
+
+            // Get report path
+            const { path: reportPath, iteration } = await getNextExchangePath(
+                projectRoot, featureName!, 'engineer'
+            );
+
+            // Update memory
+            memory.lastAuthor = 'engineer';
+            memory.iteration = iteration;
+            await stateManager.save(memory);
+
+            const ctx: RelayContext = {
+                id: randomUUID(),
+                persona: 'engineer',
+                memory,
+                logger: new ConsoleLogger(),
+                agent: new ConsoleRelayAgent(new ConsoleLogger(), 'engineer'),
+                args: { feature: featureName },
+                paths: {
+                    workDir: featureDir,
+                    directiveFile: targetDirectivePath!,
+                    reportFile: reportPath
+                },
+                currentTask: task, // No "as any"!
+                plan: feature.plan || '',
+                featureState: memory
+            };
+
+            // Resolve Bootstrap
+            const bootstrap = await resolveBootstrap(projectRoot, featureName!);
+            console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
+
+            // Execute Pipeline
+            try {
+                await bootstrap.module.engineer(ctx);
+            } catch (e: any) {
+                console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
+                process.exit(1);
+            }
+
+        } finally {
+            // 🔓 RELEASE LOCK
+            await lock.release();
         }
     });
 
