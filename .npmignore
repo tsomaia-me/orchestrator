@@ -1,0 +1,20 @@
+# Source
+src/
+test/
+.relay/
+research/
+
+# Build
+tsconfig.json
+.gitignore
+.npmignore
+
+# Logs
+*.log
+npm-debug.log
+
+# Artifacts
+task.md
+relay_audit.md
+implementation_plan.md
+walkthrough.md

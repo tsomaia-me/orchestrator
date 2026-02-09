@@ -1,5 +1,5 @@
 {
-  "name": "@tsomaia/relay",
+  "name": "orchestrator-relay",
   "version": "2.0.0",
   "description": "Agent-to-agent coordination relay for autonomous task execution",
   "main": "dist/cli.js",
@@ -9,13 +9,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "files": [
-    "bin/",
     "dist/",
+    "bin/",
     "prompts/",
-    "templates/"
+    "templates/",
+    "README.md"
   ],
   "keywords": [
     "relay",
@@ -26,18 +28,23 @@
   ],
   "author": "tsomaia",
   "license": "MIT",
-  "type": "commonjs",
   "dependencies": {
     "commander": "^14.0.3",
     "fs-extra": "^11.3.3",
-    "inquirer": "^13.2.2",
-    "chalk": "^5.6.2"
+    "inquirer": "^8.2.6",
+    "chalk": "^4.1.2"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
-    "@types/inquirer": "^9.0.9",
-    "@types/node": "^25.2.2",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
