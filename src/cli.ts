@@ -433,6 +433,9 @@ program
             } catch (e: any) {
                 console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
                 process.exit(1);
+            } finally {
+                // Persist any state changes made during execution
+                await stateManager.save(memory);
             }
 
         } finally {
@@ -557,6 +560,9 @@ program
             } catch (e: any) {
                 console.error(`\n[ERROR] Pipeline failed: ${e.message}`);
                 process.exit(1);
+            } finally {
+                // Persist any state changes made during execution
+                await stateManager.save(memory);
             }
 
         } finally {

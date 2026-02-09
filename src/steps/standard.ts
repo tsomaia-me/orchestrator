@@ -125,6 +125,16 @@ export const readDirective = () => step('readDirective', async (ctx) => {
         ctx.logger.info(content);
         ctx.logger.info(`===========================\n`);
 
+        // Check for APPROVE verdict
+        if (content.match(/##\s*VERDICT\s*\n\s*APPROVE/i)) {
+            ctx.logger.info(`\n🎉  TASK APPROVED by Architect. Exiting.\n`);
+            if (ctx.featureState) {
+                ctx.featureState.status = 'approved';
+                ctx.featureState.currentTask = ''; // Clear current task
+            }
+            return 'STOP';
+        }
+
         return 'CONTINUE';
     } catch (e: any) {
         ctx.agent.tell(`INVALID DIRECTIVE: ${e.message}\nFix the directive format and run relay again.`);
