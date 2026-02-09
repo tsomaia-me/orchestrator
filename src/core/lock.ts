@@ -14,6 +14,7 @@ export class LockManager {
     /**
      * Acquires the lock. Throws if locked.
      * Handles stale locks (older than 10s).
+     * Writes PID for debugging purposes.
      */
     async acquire(): Promise<void> {
         await fs.ensureDir(path.dirname(this.lockPath));
@@ -28,15 +29,19 @@ export class LockManager {
                     // Break stale lock
                     await fs.unlink(this.lockPath);
                 } else {
-                    throw new Error(`Relay is locked. Another process is running. (Lock age: ${age}ms)`);
+                    const owner = await this.getOwner();
+                    throw new Error(
+                        `Relay is locked by PID ${owner || 'unknown'}. ` +
+                        `Lock age: ${age}ms. Wait or run: ./relay.sh reset`
+                    );
                 }
             }
 
-            // Write 'LOCKED' to file
-            await fs.writeFile(this.lockPath, 'LOCKED', { flag: 'wx' });
+            // Write PID to file for debugging
+            await fs.writeFile(this.lockPath, String(process.pid), { flag: 'wx' });
         } catch (error: any) {
             if (error.code === 'EEXIST') {
-                throw new Error('Relay is locked. Race condition detected.');
+                throw new Error('Relay is locked. Race condition detected. Try again.');
             }
             throw error;
         }
@@ -54,4 +59,28 @@ export class LockManager {
             // Ignore errors on release (e.g. if already missing)
         }
     }
+
+    /**
+     * Get the PID of the process holding the lock.
+     */
+    async getOwner(): Promise<number | null> {
+        try {
+            if (!await fs.pathExists(this.lockPath)) {
+                return null;
+            }
+            const content = await fs.readFile(this.lockPath, 'utf-8');
+            const pid = parseInt(content.trim(), 10);
+            return isNaN(pid) ? null : pid;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Check if lock exists.
+     */
+    async isLocked(): Promise<boolean> {
+        return fs.pathExists(this.lockPath);
+    }
 }
+

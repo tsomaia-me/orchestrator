@@ -3,15 +3,35 @@ import path from 'path';
 
 const STATE_FILE = 'state.json';
 
+export type TaskStatus = 'pending' | 'in_progress' | 'review' | 'done';
+
 export interface RelayState {
-    // Define structure of the persisted state
-    task?: {
+    // Task tracking
+    taskStatus: TaskStatus;
+    currentTask?: {
         id: string;
         description: string;
-        status: 'pending' | 'in_progress' | 'review' | 'done';
+        status: TaskStatus;
     };
+
+    // Pipeline state (Pulse Protocol)
+    stepIndex: number;
+    loopIndex?: number;
+    inLoop?: boolean;
+    hasRunSystemPrompt: boolean;
+
+    // Coordination tracking
+    lastDirectiveHash?: string;
+    lastReportHash?: string;
+    lastDirective?: string;
+    lastReport?: string;
+
+    // Metadata
     iteration: number;
     lastUpdate: number;
+
+    // Safety limits
+    maxLoopIterations?: number;
 }
 
 export class StateManager {
@@ -40,10 +60,21 @@ export class StateManager {
         await fs.writeJson(this.statePath, state, { spaces: 2 });
     }
 
+    async reset(): Promise<void> {
+        const relayDir = path.dirname(this.statePath);
+        if (await fs.pathExists(relayDir)) {
+            await fs.remove(relayDir);
+        }
+    }
+
     private defaultState(): RelayState {
         return {
+            taskStatus: 'pending',
+            stepIndex: 0,
+            hasRunSystemPrompt: false,
             iteration: 0,
             lastUpdate: Date.now(),
         };
     }
 }
+

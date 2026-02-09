@@ -1,36 +1,41 @@
 {
-  "name": "relay",
-  "version": "1.0.0",
-  "description": "",
-  "main": "engineer.js",
+  "name": "@tsomaia/relay",
+  "version": "2.0.0",
+  "description": "Agent-to-agent coordination relay for autonomous task execution",
+  "main": "dist/cli.js",
+  "bin": {
+    "relay": "./bin/cli.js"
+  },
   "scripts": {
     "build": "tsc",
+    "dev": "tsx src/cli.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "private": true,
   "files": [
-    "src/**."
+    "bin/",
+    "dist/",
+    "prompts/"
   ],
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "relay",
+    "agent",
+    "coordination",
+    "llm",
+    "cli"
+  ],
+  "author": "tsomaia",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "boxen": "^5.1.2",
+    "commander": "^14.0.3",
     "fs-extra": "^11.3.3",
-    "glob": "^13.0.1",
-    "uuid": "^13.0.0"
+    "inquirer": "^13.2.2",
+    "chalk": "^5.6.2"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^25.2.2",
-    "@types/uuid": "^10.0.0",
-    "chalk": "^5.6.2",
-    "commander": "^14.0.3",
-    "dotenv": "^17.2.4",
-    "inquirer": "^13.2.2",
-    "ora": "^9.3.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

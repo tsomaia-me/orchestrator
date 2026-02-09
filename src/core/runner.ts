@@ -10,13 +10,13 @@ export interface RelayPipeline {
 export const createRelay = (config: RelayPipeline) => {
     return async (ctx: RelayContext) => {
         const stateManager = new StateManager(ctx.paths.workDir);
-        let currentIndex = ctx.memory.stepIndex || 0;
+
+        // Namespace state keys by pipeline name to prevent persona conflicts
+        const stepIndexKey = `${config.name}_stepIndex` as keyof typeof ctx.memory;
+        let currentIndex = (ctx.memory as any)[stepIndexKey] || 0;
 
         // If we finished the pipeline before, reset? Or stay done?
         if (currentIndex >= config.steps.length) {
-            // For now, reset to 0 if we looped or finished?
-            // Actually, let's assume if it finished, it finished.
-            // But if it's a loop, it should never finish.
             if (config.steps.length > 0 && config.steps[0].name === 'loop') {
                 currentIndex = 0;
             } else {
@@ -28,30 +28,23 @@ export const createRelay = (config: RelayPipeline) => {
         // Execute from current index
         for (let i = currentIndex; i < config.steps.length; i++) {
             const step = config.steps[i];
-
-            // Execute Step
-            // ctx.logger.info(`[STEP] ${step.name}`);
             const result = await step(ctx);
 
             if (result === 'WAIT') {
-                // Save state at current index (to retry next time)
-                ctx.memory.stepIndex = i;
+                (ctx.memory as any)[stepIndexKey] = i;
                 await stateManager.save(ctx.memory);
                 return; // Exit process (Pulse)
             }
 
             if (result === 'STOP') {
-                ctx.memory.stepIndex = i + 1; // Mark as done
+                (ctx.memory as any)[stepIndexKey] = i + 1;
                 await stateManager.save(ctx.memory);
                 return;
             }
-
-            // CONTINUE: Move to next step
         }
 
-        // Checks if we fell off the end of the list
-        ctx.memory.stepIndex = 0; // Reset for next run? Or keep at end? State machine logic.
-        // If we are here, we finished the list.
+        // If we fell off the end, reset for next run
+        (ctx.memory as any)[stepIndexKey] = 0;
         await stateManager.save(ctx.memory);
     };
 };
@@ -59,47 +52,52 @@ export const createRelay = (config: RelayPipeline) => {
 /**
  * Loop Step: Executes its children until one returns WAIT or STOP.
  * If children complete, it restarts them immediately.
+ * Safety limit prevents infinite loops.
  */
-export const loop = (steps: RelayStep[]): RelayStep => {
-    return async (ctx: RelayContext) => {
-        // Loop Internal State
-        // We need to track where we are INSIDE the loop.
-        // This is tricky with flat state.
-        // Simplified: The loop is just a list of steps. 
-        // We rely on the Runner to handle index? 
-        // Actually, 'loop' as a step in a list means the runner enters it.
+export const loop = (steps: RelayStep[], loopName?: string): RelayStep => {
+    const stepFn = async (ctx: RelayContext) => {
+        const MAX_LOOP_ITERATIONS = ctx.memory.maxLoopIterations || 100;
 
-        // Revised Strategy: Flatten the loop? 
-        // Or specific 'loop' logic in runner?
+        // Use persona-namespaced loop index
+        const loopIndexKey = `${ctx.persona}_loopIndex` as keyof typeof ctx.memory;
+        const inLoopKey = `${ctx.persona}_inLoop` as keyof typeof ctx.memory;
 
-        // Let's keep it simple: The `createRelay` steps are the main loop.
-        // We don't need a recursive `loop` step if the main runner just resets index to 0.
+        let loopIndex = (ctx.memory as any)[loopIndexKey] || 0;
+        let totalIterations = 0;
 
-        // BUT user asked for `loop([...])`.
-        // So `loop` executes the sub-steps.
-
-        let loopIndex = ctx.memory.loopIndex || 0;
-
-        while (true) {
+        while (totalIterations < MAX_LOOP_ITERATIONS) {
             if (loopIndex >= steps.length) {
                 loopIndex = 0; // Restart loop
+                totalIterations++; // Count full loop cycles
             }
 
             const step = steps[loopIndex];
             const result = await step(ctx);
 
             if (result === 'WAIT') {
-                ctx.memory.loopIndex = loopIndex;
-                ctx.memory.inLoop = true;
+                (ctx.memory as any)[loopIndexKey] = loopIndex;
+                (ctx.memory as any)[inLoopKey] = true;
                 return 'WAIT';
             }
 
             if (result === 'STOP') {
+                (ctx.memory as any)[loopIndexKey] = 0;
+                (ctx.memory as any)[inLoopKey] = false;
                 return 'STOP';
             }
 
-            // Continue
+            // Continue to next step
             loopIndex++;
         }
+
+        // Safety limit reached
+        ctx.logger.warn(`Loop safety limit reached (${MAX_LOOP_ITERATIONS} iterations). Stopping.`);
+        (ctx.memory as any)[loopIndexKey] = 0;
+        (ctx.memory as any)[inLoopKey] = false;
+        return 'STOP';
     };
+
+    // Set function name for debugging
+    Object.defineProperty(stepFn, 'name', { value: loopName || 'loop' });
+    return stepFn;
 };

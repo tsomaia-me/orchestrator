@@ -1,10 +1,12 @@
 import { RelayLogger } from './logger';
 import { RelayAgent } from './agent';
+import { RelayState } from './state';
+import { RelayConfig, TaskFile } from './config';
 
 export interface RelayContext {
     id: string; // Session ID
     persona: string;
-    memory: any; // Typed as any for now, will correspond to State
+    memory: RelayState;
 
     // Services
     logger: RelayLogger;
@@ -19,4 +21,10 @@ export interface RelayContext {
         reportFile: string;
         directiveFile: string;
     };
+
+    // Config and task context (for auto-mode)
+    config?: RelayConfig;
+    currentTask?: TaskFile;
+    plan?: string;
 }
+
