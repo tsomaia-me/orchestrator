@@ -18,8 +18,8 @@ export interface RelayContext {
     // File paths for coordination
     paths: {
         workDir: string;
-        reportFile: string;
-        directiveFile: string;
+        reportFile?: string;
+        directiveFile?: string;
     };
 
     // Task context (unified with Feature definitions)

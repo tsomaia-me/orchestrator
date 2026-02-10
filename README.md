@@ -55,38 +55,41 @@ You will be prompted to define:
 
 ### 3. The Workflow (The Loop)
 
-Orchestrator Relay operates in a semi-autonomous loop. You are the **Orchestrator**.
+Orchestrator Relay operates in a semi-autonomous loop using the **Pulse Protocol**. You are the **Orchestrator**.
 
-#### **Act 1: The Architect (Planning)**
-The Architect reviews the current state and issues a **Directive**.
+#### **Act 1: Activation**
+First, you "activate" the agent. This loads the Persona (System Prompt) into the context window.
 
 ```bash
 relay architect my-feature
 ```
-*   **Human Role**: Read the Directive. Ensure it aligns with your goals.
-    *   *If good*: Proceed.
-    *   *If bad*: Reject/Edit it.
 
-#### **Act 2: The Engineer (Execution)**
-The Engineer implements the changes and runs tests.
+The system will output the System Prompt. You (or your Agent IDE) should read this, then strictly follow the instruction to begin the loop.
+
+#### **Act 2: The Pulse (Execution)**
+Once activated, the agent enters the execution loop. This command is stateless and can be run repeatedly.
 
 ```bash
+relay architect my-feature pulse
+```
+
+*   **Auto-Pilot**: The system automatically selects the next pending task.
+*   **Context**: The agent receives the exact file path and content of the active task.
+*   **Result**: The agent writes a **Directive** for the Engineer.
+
+#### **Act 3: The Engineer**
+Similar to the Architect, the Engineer has an activation and pulse phase.
+
+```bash
+# Activation
 relay engineer my-feature
-```
-*   **Human Role**: Trigger the agent.
-    *   The Engineer will write code and run verification commands (tests).
-    *   **Orchestrator Check**: Did the agent report success? If yes, proceed.
 
-#### **Act 3: The Architect (Review)**
-The Architect reviews the Engineer's report and test results.
-
-```bash
-relay architect my-feature
+# Pulse (Execution)
+relay engineer my-feature pulse
 ```
-*   **Human Role**: Trigger the review.
-*   **System Action**: The Architect decides:
-    *   **APPROVE**: The task is done. The loop ends.
-    *   **REJECT**: The loop repeats (Back to Act 1).
+
+*   **Action**: The Engineer reads the Architect's directive, writes code, runs tests, and writes a **Report**.
+*   **Review**: The Architect (running `pulse` again) will review the report and either **Approve** (ending the task) or **Reject** (looping back to Engineer).
 
 ---
 

@@ -3,7 +3,11 @@ import { PromptLoader } from '../core/prompts';
 import { Validator } from '../core/validator';
 import fs from 'fs-extra';
 import path from 'path';
+import inquirer from 'inquirer';
 import crypto from 'crypto';
+import { getNextPendingTask, TaskFile } from '../core/feature';
+import { getNextExchangePath, getLatestExchangeToRead } from '../core/exchange';
+import { StateManager } from '../core/state';
 
 // Helper: Hash file content for change detection
 const hashFile = async (filePath: string): Promise<string> => {
@@ -41,6 +45,104 @@ export const systemPrompt = (persona: string) => step('systemPrompt', async (ctx
  * Check/update task status
  */
 export const lookupTask = () => step('lookupTask', async (ctx) => {
+    // Smart Resume / Auto-Advance Logic
+
+    // If no context about current task, or it is done (approved), find next
+    if (!ctx.memory.currentTask || ctx.memory.status === 'approved') {
+        const projectRoot = path.resolve(ctx.paths.workDir, '..', '..', '..');
+        const nextTask = await getNextPendingTask(projectRoot, ctx.args.feature);
+
+        if (nextTask) {
+            ctx.memory.currentTask = nextTask.id;
+            ctx.memory.currentTaskSlug = nextTask.slug;
+            ctx.memory.taskStatus = 'pending';
+
+            // Update context with full task object so subsequent steps have it
+            ctx.currentTask = nextTask;
+
+            // SAVE STATE IMMEDIATELY so getNextExchangePath (which reads from disk) sees the new task
+            const stateManager = new StateManager(ctx.paths.workDir);
+            await stateManager.save(ctx.memory);
+
+            // CRITICAL: Update paths now that we have a task
+            try {
+                const featureName = ctx.args.feature;
+                // projectRoot is already defined correctly above
+
+                // We need to determine paths based on the NEW task
+                // This mimics logic in cli.ts but does it dynamically
+                const role = ctx.persona; // 'architect' or 'engineer'
+
+                if (role === 'architect') {
+                    // Architect writes directive, reads report
+                    const { path: dirPath, iteration } = await getNextExchangePath(projectRoot, featureName, 'architect');
+                    ctx.paths.directiveFile = dirPath;
+                    ctx.memory.iteration = iteration;
+
+                    // Architect reads latest report (if any)
+                    const reportPath = await getLatestExchangeToRead(projectRoot, featureName, 'architect');
+                    if (reportPath) {
+                        ctx.paths.reportFile = reportPath;
+                    } else if (iteration === 1) {
+                        // First iteration: No report exists yet. Don't wait for it.
+                        delete ctx.paths.reportFile;
+                    }
+
+                } else if (role === 'engineer') {
+                    // Engineer writes report, reads directive
+                    const { path: repPath, iteration } = await getNextExchangePath(projectRoot, featureName, 'engineer');
+                    ctx.paths.reportFile = repPath;
+                    ctx.memory.iteration = iteration;
+
+                    // Engineer reads latest directive
+                    const dirPath = await getLatestExchangeToRead(projectRoot, featureName, 'engineer');
+                    if (dirPath) {
+                        ctx.paths.directiveFile = dirPath;
+                    } else {
+                        // Predict expected directive path if missing
+                        const featureDir = ctx.paths.workDir;
+                        ctx.paths.directiveFile = path.join(featureDir, 'exchange',
+                            `${nextTask.id}-${String(iteration).padStart(3, '0')}-architect-${nextTask.slug}.md`
+                        );
+                    }
+                }
+
+                ctx.logger.info(`[AUTO] Paths updated for Task ${nextTask.id}`);
+            } catch (e: any) {
+                ctx.logger.warn(`[WARN] Failed to update paths for auto-selected task: ${e.message}`);
+            }
+
+            ctx.logger.info(`[AUTO] Selected Task: ${nextTask.id} - ${nextTask.title}`);
+        } else {
+            // No pending tasks. Empty state?
+            if (!ctx.memory.currentTask) {
+                // New feature, no tasks
+                ctx.logger.info(`[INFO] No tasks found.`);
+
+                // Prompt to create scaffold
+                const { confirm } = await inquirer.prompt({
+                    type: 'confirm',
+                    name: 'confirm',
+                    message: 'No tasks found. Create 001-setup.md scaffold?',
+                    default: true
+                });
+
+                if (confirm) {
+                    const tasksDir = path.join(ctx.paths.workDir, 'tasks');
+                    await fs.ensureDir(tasksDir);
+                    await fs.writeFile(
+                        path.join(tasksDir, '001-setup.md'),
+                        `# Task 001: Setup\n\n- [ ] Initialize project structure\n`
+                    );
+                    ctx.logger.info(`[CREATED] 001-setup.md. Re-run pulse to begin.`);
+                    return 'STOP';
+                }
+            } else {
+                ctx.logger.info(`[INFO] All tasks approved!`);
+            }
+        }
+    }
+
     if (!ctx.memory.taskStatus) {
         ctx.memory.taskStatus = 'pending';
     }
@@ -51,8 +153,6 @@ export const lookupTask = () => step('lookupTask', async (ctx) => {
     } else if (ctx.memory.currentTask) {
         ctx.logger.info(`[TASK] ${ctx.memory.currentTask} (${ctx.memory.taskStatus})`);
     }
-
-    return 'CONTINUE';
 
     return 'CONTINUE';
 });
@@ -115,6 +215,8 @@ export const readReport = () => step('readReport', async (ctx) => {
  * Validate and read the Architect's directive
  */
 export const readDirective = () => step('readDirective', async (ctx) => {
+    if (!ctx.paths.directiveFile) return 'CONTINUE';
+
     const validator = new Validator();
 
     try {
@@ -166,6 +268,11 @@ export const archiveFile = (filePathKey: 'reportFile' | 'directiveFile') =>
 export const promptWrite = (filePathKey: 'reportFile' | 'directiveFile') =>
     step(`promptWrite:${filePathKey}`, async (ctx) => {
         const filePath = ctx.paths[filePathKey];
+        if (!filePath) {
+            ctx.logger.error(`[ERROR] No path defined for ${filePathKey}. Cannot prompt.`);
+            return 'STOP';
+        }
+
         const role = filePathKey === 'reportFile' ? 'ENGINEER' : 'ARCHITECT';
         const fileType = filePathKey === 'reportFile' ? 'report' : 'directive';
 
@@ -186,6 +293,8 @@ Output: ${filePath}
 ───────────────────────────────────────────────────────────────────────────────
                               CURRENT TASK
 ───────────────────────────────────────────────────────────────────────────────
+
+File: ${ctx.currentTask.path}
 
 ${ctx.currentTask.content}
 
@@ -234,7 +343,7 @@ Review the engineer's report against this task's acceptance criteria.
         prompt += `
 ───────────────────────────────────────────────────────────────────────────────
 
-When finished: ./relay.sh ${role.toLowerCase()}
+When finished: relay ${role.toLowerCase()} ${ctx.args.feature} pulse [--submit]
 
 ═══════════════════════════════════════════════════════════════════════════════
 `;

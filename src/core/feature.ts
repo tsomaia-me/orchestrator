@@ -180,6 +180,42 @@ export async function loadFeatureTasks(projectRoot: string, name: string): Promi
 }
 
 /**
+ * Get the next pending task (lowest ID that is not approved/skipped)
+ */
+export async function getNextPendingTask(projectRoot: string, name: string): Promise<TaskFile | null> {
+    const state = await loadFeatureState(projectRoot, name);
+    const tasks = await loadFeatureTasks(projectRoot, name);
+
+    if (tasks.length === 0) {
+        return null;
+    }
+
+    // If current task exists and is NOT approved, return it (Stay on strict loop)
+    if (state.currentTask && state.status !== 'approved') {
+        const current = tasks.find(t => t.id === state.currentTask);
+        if (current) return current;
+    }
+
+    // Otherwise, find first task that hasn't been done
+    // We assume tasks are sorted by ID in loadFeatureTasks
+
+    // Simple logic: If current task is approved, find next one in list
+    let nextTask: TaskFile | null = null;
+
+    if (state.currentTask) {
+        const currentIndex = tasks.findIndex(t => t.id === state.currentTask);
+        if (currentIndex !== -1 && currentIndex < tasks.length - 1) {
+            nextTask = tasks[currentIndex + 1];
+        }
+    } else {
+        // No current task, start with first
+        nextTask = tasks[0];
+    }
+
+    return nextTask;
+}
+
+/**
  * Create a new feature scaffold
  */
 export async function createFeature(projectRoot: string, name: string): Promise<void> {

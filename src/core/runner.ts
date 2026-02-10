@@ -17,12 +17,9 @@ export const createRelay = (config: RelayPipeline) => {
 
         // If we finished the pipeline before, reset? Or stay done?
         if (currentIndex >= config.steps.length) {
-            if (config.steps.length > 0 && config.steps[0].name === 'loop') {
-                currentIndex = 0;
-            } else {
-                ctx.agent.tell("Pipeline completed.");
-                return;
-            }
+            // Auto-restart pipeline if verified complete
+            currentIndex = 0;
+            ctx.logger.info("[INFO] Pipeline restarting...");
         }
 
         // Execute from current index

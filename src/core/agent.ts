@@ -11,7 +11,7 @@ export class ConsoleRelayAgent implements RelayAgent {
     tell(message: string): void {
         const footer = `
 --------------------------------------------------------------------------------
-COMMAND: When finished, run \`./relay.sh ${this.persona} --submit\`
+COMMAND: When finished, run \`relay ${this.persona} <feature> pulse --submit\`
 WARNING: Do NOT run in background. Do NOT poll. Run ONCE, read, act, then run again.
 --------------------------------------------------------------------------------
 `;

@@ -26,6 +26,7 @@ import {
 } from './core/exchange';
 import { resolvePrompt } from './core/prompt-resolver';
 import { resolveBootstrap } from './core/bootstrap-resolver';
+import { PromptLoader } from './core/prompts';
 import { RelayContext } from './core/context';
 import { ConsoleLogger } from './core/logger';
 import { ConsoleRelayAgent } from './core/agent';
@@ -303,9 +304,9 @@ program
 // ═══════════════════════════════════════════════════════════════════════════
 
 program
-    .command('architect [feature] [task]')
+    .command('architect [feature] [pulse]')
     .description('Run architect agent')
-    .action(async (featureArg?: string, taskArg?: string) => {
+    .action(async (featureArg?: string, pulseArg?: string) => {
         const projectRoot = requireRelayRoot();
         const features = await listFeatures(projectRoot);
 
@@ -327,17 +328,53 @@ program
         }
 
         if (!features.includes(featureName!)) {
+            // Check if featureArg was actually "pulse" (user ran: relay architect pulse)
+            if (featureName === 'pulse') {
+                console.error('Error: You must specify a feature name before "pulse".');
+                console.error('Usage: relay architect <feature> pulse');
+                process.exit(1);
+            }
             console.error(`Feature '${featureName}' not found.`);
             process.exit(1);
         }
 
-        const feature = await getFeature(projectRoot, featureName!);
         const featureDir = getFeatureDir(projectRoot, featureName!);
+        const isPulse = pulseArg === 'pulse' || featureName === 'pulse'; // Safety check
 
-        if (feature.tasks.length === 0) {
-            console.error(`No tasks in ${featureName}. Create tasks in tasks/ folder.`);
-            process.exit(1);
+        // ══════════════════════════════════════════════════════════════════════
+        // MODE 1: ACTIVATION (No Pulse)
+        // ══════════════════════════════════════════════════════════════════════
+        if (!isPulse) {
+            const loader = new PromptLoader(featureDir);
+            let promptContent = '';
+
+            try {
+                if (await loader.exists('architect')) {
+                    promptContent = await loader.load('architect');
+                } else {
+                    // Fallback to default
+                    const defaultPromptPath = path.join(getPackageRoot(), 'prompts', 'architect.md');
+                    if (await fs.pathExists(defaultPromptPath)) {
+                        promptContent = await fs.readFile(defaultPromptPath, 'utf-8');
+                    } else {
+                        promptContent = "You are the Architect. Plan and oversee execution.";
+                    }
+                }
+            } catch (e: any) {
+                console.error(`Error loading prompt: ${e.message}`);
+                process.exit(1);
+            }
+
+            console.log(promptContent);
+            console.log('\n───────────────────────────────────────────────────────────────────────────────');
+            console.log(`To begin working on ${featureName}, execute: relay architect ${featureName} pulse`);
+            console.log('───────────────────────────────────────────────────────────────────────────────\n');
+            return;
         }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // MODE 2: PULSE (Execution Loop)
+        // ══════════════════════════════════════════════════════════════════════
 
         // 🔒 ACQUIRE LOCK
         const lock = new LockManager(featureDir);
@@ -350,61 +387,59 @@ program
         }
 
         try {
-            let taskId = taskArg;
-            if (!taskId) {
-                // Ask for task
-                const answer = await inquirer.prompt({
-                    type: 'list',
-                    name: 'taskId',
-                    message: 'TASK?',
-                    choices: feature.tasks.map(t => ({
-                        name: `${t.id}: ${t.title}`,
-                        value: t.id
-                    }))
-                });
-                taskId = answer.taskId;
-            }
-
-            const task = feature.tasks.find(t => t.id === taskId);
-            if (!task) {
-                console.error(`Task ID '${taskId}' not found.`);
-                process.exit(1);
-            }
-
-            // Get report path (for review context)
-            const reportPath = await getLatestExchangeToRead(projectRoot, featureName!, 'architect');
-
-            // Get next exchange path
-            const { path: exchangePath, iteration } = await getNextExchangePath(
-                projectRoot, featureName!, 'architect'
-            ).catch(() => {
-                // First directive for this task
-                return {
-                    path: path.join(
-                        getFeatureDir(projectRoot, featureName!),
-                        'exchange',
-                        `${task.id}-001-architect-${task.slug}.md`
-                    ),
-                    iteration: 1
-                };
-            });
+            const feature = await getFeature(projectRoot, featureName!);
 
             // Load persistence
             const stateManager = new StateManager(featureDir);
             const memory = await stateManager.load();
 
-            // Update memory
-            memory.currentTask = task.id;
-            memory.currentTaskSlug = task.slug;
-            if (memory.lastAuthor !== 'architect' || memory.currentTask !== task.id) {
-                memory.iteration = iteration;
+            // Resolve Current Task (Lookup logic is now in standard steps, but we need basic info for context)
+            let currentTask = null;
+            if (memory.currentTask) {
+                currentTask = feature.tasks.find(t => t.id === memory.currentTask);
             }
+
+            // --- CONTEXT HEADER ---
+            console.log('\n=== PULSE: ARCHITECT ===');
+            console.log(`Feature: ${featureName}`);
+            console.log(`Status:  ${memory.status}`);
+            console.log(`Task:    ${currentTask ? `${currentTask.id} - ${currentTask.title}` : '(None / Auto-Select)'}`);
+            if (currentTask) {
+                console.log(`Path:    ${currentTask.path}`);
+            }
+            console.log('========================\n');
+
+
+            // Get report path (for review context)
+            const reportPath = await getLatestExchangeToRead(projectRoot, featureName!, 'architect');
+
+            // Get next exchange path
+            // If no current task, we can't determine exchange path yet. 
+            // The pipeline will handle this after lookupTask updates the state.
+            // But we need safe defaults for paths object.
+
+            // We'll calculate paths dynamically inside steps or assume safe defaults here
+            let exchangePath = '';
+            let iteration = memory.iteration;
+
+            if (memory.currentTask && memory.currentTaskSlug) {
+                const result = await getNextExchangePath(
+                    projectRoot, featureName!, 'architect'
+                ).catch(() => ({ path: '', iteration: 1 }));
+                exchangePath = result.path;
+                iteration = result.iteration;
+            }
+
+            // Update memory
             memory.lastAuthor = 'architect';
             memory.status = 'in_progress';
+            // Only update iteration if we have a task context
+            if (memory.currentTask) {
+                if (memory.lastAuthor !== 'architect') {
+                    memory.iteration = iteration;
+                }
+            }
             await stateManager.save(memory);
-
-            // Files
-            const reportFile = reportPath || '';
 
             const ctx: RelayContext = {
                 id: randomUUID(),
@@ -412,20 +447,23 @@ program
                 memory,
                 logger: new ConsoleLogger(),
                 agent: new ConsoleRelayAgent(new ConsoleLogger(), 'architect'),
-                args: { feature: featureName, task: taskId },
+                args: { feature: featureName },
                 paths: {
                     workDir: featureDir,
-                    directiveFile: exchangePath,
-                    reportFile: reportFile
+                    directiveFile: exchangePath, // Might be empty if no task
+                    reportFile: reportPath || ''
                 },
-                currentTask: task, // No "as any"!
+                currentTask: currentTask || undefined,
                 plan: feature.plan || '',
-                featureState: memory // Full state access
+                featureState: memory
             };
+
+            // Mark system prompt as run so it skips in pipeline
+            ctx.memory.hasRunSystemPrompt = true;
 
             // Resolve Bootstrap
             const bootstrap = await resolveBootstrap(projectRoot, featureName!);
-            console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
+            // console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
 
             // Execute Pipeline
             try {
@@ -445,9 +483,9 @@ program
     });
 
 program
-    .command('engineer [feature]')
+    .command('engineer [feature] [pulse]')
     .description('Run engineer agent')
-    .action(async (featureArg?: string) => {
+    .action(async (featureArg?: string, pulseArg?: string) => {
         const projectRoot = requireRelayRoot();
         const features = await listFeatures(projectRoot);
 
@@ -469,12 +507,52 @@ program
         }
 
         if (!features.includes(featureName!)) {
+            if (featureName === 'pulse') {
+                console.error('Error: You must specify a feature name before "pulse".');
+                console.error('Usage: relay engineer <feature> pulse');
+                process.exit(1);
+            }
             console.error(`Feature '${featureName}' not found.`);
             process.exit(1);
         }
 
-        const feature = await getFeature(projectRoot, featureName!);
         const featureDir = getFeatureDir(projectRoot, featureName!);
+        const isPulse = pulseArg === 'pulse' || featureName === 'pulse'; // Safety check
+
+        // ══════════════════════════════════════════════════════════════════════
+        // MODE 1: ACTIVATION (No Pulse)
+        // ══════════════════════════════════════════════════════════════════════
+        if (!isPulse) {
+            const loader = new PromptLoader(featureDir);
+            let promptContent = '';
+
+            try {
+                if (await loader.exists('engineer')) {
+                    promptContent = await loader.load('engineer');
+                } else {
+                    // Fallback to default
+                    const defaultPromptPath = path.join(getPackageRoot(), 'prompts', 'engineer.md');
+                    if (await fs.pathExists(defaultPromptPath)) {
+                        promptContent = await fs.readFile(defaultPromptPath, 'utf-8');
+                    } else {
+                        promptContent = "You are the Engineer. Execute the directive.";
+                    }
+                }
+            } catch (e: any) {
+                console.error(`Error loading prompt: ${e.message}`);
+                process.exit(1);
+            }
+
+            console.log(promptContent);
+            console.log('\n───────────────────────────────────────────────────────────────────────────────');
+            console.log(`To begin working on ${featureName}, execute: relay engineer ${featureName} pulse`);
+            console.log('───────────────────────────────────────────────────────────────────────────────\n');
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // MODE 2: PULSE (Execution Loop)
+        // ══════════════════════════════════════════════════════════════════════
 
         // 🔒 ACQUIRE LOCK
         const lock = new LockManager(featureDir);
@@ -487,12 +565,15 @@ program
         }
 
         try {
+            const feature = await getFeature(projectRoot, featureName!);
             const stateManager = new StateManager(featureDir);
             const memory = await stateManager.load();
 
-            // Ensure state is valid
+            // Ensure state is valid (Engineer cannot run if no task is selected by Architect/System)
+            // But with auto-task selection, Architect runs first. Engineer should wait.
+            // If architect hasn't run, status might be pending, but currentTask might be empty.
             if (!memory.currentTask) {
-                console.error('No current task selected. Architect must run first.');
+                console.error('No current task selected. Architect must run first to select/approve a task.');
                 process.exit(1);
             }
 
@@ -501,6 +582,14 @@ program
                 console.error(`Task ${memory.currentTask} not found in tasks folder.`);
                 process.exit(1);
             }
+
+            // --- CONTEXT HEADER ---
+            console.log('\n=== PULSE: ENGINEER ===');
+            console.log(`Feature: ${featureName}`);
+            console.log(`Status:  ${memory.status}`);
+            console.log(`Task:    ${task.id} - ${task.title}`);
+            console.log(`Path:    ${task.path}`);
+            console.log('=======================\n');
 
             // Directive to read
             const directivePath = await getLatestExchangeToRead(projectRoot, featureName!, 'engineer');
@@ -550,9 +639,12 @@ program
                 featureState: memory
             };
 
+            // Mark system prompt as run
+            ctx.memory.hasRunSystemPrompt = true;
+
             // Resolve Bootstrap
             const bootstrap = await resolveBootstrap(projectRoot, featureName!);
-            console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
+            // console.log(`\n[BOOTSTRAP] Loaded from: ${bootstrap.path}`);
 
             // Execute Pipeline
             try {
