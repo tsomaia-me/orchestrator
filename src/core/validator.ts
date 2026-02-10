@@ -9,8 +9,9 @@ export class Validator {
     /**
      * Validates the Engineer's report.
      * Expects:
-     * # STATUS
-     * [COMPLETED | FAILED | BLOCKED]
+     * # STATUS (COMPLETED | FAILED | BLOCKED)
+     * ## CHANGES
+     * ## VERIFICATION
      */
     async validateEngineerReport(filePath: string): Promise<string> {
         if (!await fs.pathExists(filePath)) {
@@ -19,10 +20,25 @@ export class Validator {
 
         const content = await fs.readFile(filePath, 'utf-8');
 
-        // Strict Regex Check
-        const statusMatch = content.match(/# STATUS\s*\n\s*(COMPLETED|FAILED|BLOCKED)/i);
+        // 1. Strict Status Check
+        const statusMatch = content.match(/# STATUS\s*\n.*(COMPLETED|FAILED|BLOCKED)/i);
         if (!statusMatch) {
-            throw new Error(`Report is malformed. Missing '# STATUS' section with valid value (COMPLETED|FAILED|BLOCKED). Content preview: ${content.substring(0, 50)}...`);
+            throw new Error(`Report is malformed. Missing '# STATUS' section with valid value (COMPLETED|FAILED|BLOCKED).`);
+        }
+
+        // 2. Changes Check
+        if (!content.includes('## CHANGES')) {
+            throw new Error(`Report is malformed. Missing '## CHANGES' section.`);
+        }
+
+        // 3. Verification Check
+        if (!content.includes('## VERIFICATION')) {
+            throw new Error(`Report is malformed. Missing '## VERIFICATION' section.`);
+        }
+
+        // 4. Content sanity check (not just headers)
+        if (content.length < 50) {
+            throw new Error(`Report is curiously short (${content.length} chars). Did you actually write anything?`);
         }
 
         return content;
@@ -31,8 +47,10 @@ export class Validator {
     /**
      * Validates the Architect's directive/feedback.
      * Expects:
-     * # VERDICT
-     * [APPROVE | REJECT]
+     * # DIRECTIVE
+     * Target: ...
+     * ## EXECUTE (or ## CRITIQUE)
+     * # VERDICT (APPROVE | REJECT)
      */
     async validateArchitectDirective(filePath: string): Promise<string> {
         if (!await fs.pathExists(filePath)) {
@@ -41,10 +59,23 @@ export class Validator {
 
         const content = await fs.readFile(filePath, 'utf-8');
 
-        // Strict Regex Check
-        const verdictMatch = content.match(/# VERDICT\s*\n\s*(APPROVE|REJECT)/i);
+        // 1. Header Check
+        if (!content.match(/# DIRECTIVE/i)) {
+            throw new Error(`Directive is malformed. Missing '# DIRECTIVE' header.`);
+        }
+
+        // 2. Body Check (Execute OR Critique)
+        const hasExecute = content.match(/## EXECUTE/i);
+        const hasCritique = content.match(/## CRITIQUE/i);
+
+        if (!hasExecute && !hasCritique) {
+            throw new Error(`Directive is malformed. Must contain either '## EXECUTE' or '## CRITIQUE' section.`);
+        }
+
+        // 3. Verdict Check
+        const verdictMatch = content.match(/# VERDICT\s*\n.*(APPROVE|REJECT)/i);
         if (!verdictMatch) {
-            throw new Error(`Directive is malformed. Missing '# VERDICT' section with valid value (APPROVE|REJECT). Content preview: ${content.substring(0, 50)}...`);
+            throw new Error(`Directive is malformed. Missing '# VERDICT' section with valid value (APPROVE|REJECT).`);
         }
 
         return content;

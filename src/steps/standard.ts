@@ -276,6 +276,23 @@ export const promptWrite = (filePathKey: 'reportFile' | 'directiveFile') =>
         const role = filePathKey === 'reportFile' ? 'ENGINEER' : 'ARCHITECT';
         const fileType = filePathKey === 'reportFile' ? 'report' : 'directive';
 
+        // -------------------------------------------------------------------------
+        // BUREAUCRACY ELIMINATION: Pre-fill the file with headers
+        // -------------------------------------------------------------------------
+        let template = '';
+        if (role === 'ENGINEER') {
+            template = `# REPORT\n\nTarget: ${ctx.currentTask?.id || 'UNKNOWN'}\nStatus: [COMPLETED | FAILED | BLOCKED]\n\n## CHANGES\n- \n\n## VERIFICATION\n- \n\n## ISSUES\n- None\n`;
+        } else {
+            template = `# DIRECTIVE\n\nTarget: ${ctx.currentTask?.id || 'UNKNOWN'}\n\n## EXECUTE\n1. \n\n## CRITIQUE (If Rejecting)\n1. \n\n## VERDICT\n[APPROVE | REJECT]\n`;
+        }
+
+        // Only write template if file doesn't exist or is empty
+        if (!await fs.pathExists(filePath) || (await fs.stat(filePath)).size === 0) {
+            await fs.writeFile(filePath, template);
+            ctx.logger.info(`[AUTO] Pre-filled ${fileType} template at ${path.basename(filePath)}`);
+        }
+        // -------------------------------------------------------------------------
+
         // Build context-aware prompt for auto-mode
         let prompt = `
 ═══════════════════════════════════════════════════════════════════════════════
@@ -283,8 +300,11 @@ export const promptWrite = (filePathKey: 'reportFile' | 'directiveFile') =>
 ═══════════════════════════════════════════════════════════════════════════════
 
 Role: ${role}
-Action: Write your ${fileType}
-Output: ${filePath}
+Action: Fill in the ${fileType}
+File: ${filePath}
+
+[INFO] The file has been pre-filled with the required headers.
+       DO NOT remove the headers. Fill in the sections.
 `;
 
         // Inject current task if available (for engineer)
@@ -311,6 +331,9 @@ ${ctx.currentTask.content}
 
 Task: ${ctx.currentTask.title}
 File: ${ctx.currentTask.filename}
+
+## REQUIREMENTS
+${ctx.currentTask.content}
 
 Review the engineer's report against this task's acceptance criteria.
 
