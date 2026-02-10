@@ -293,11 +293,26 @@ export const promptWrite = (filePathKey: 'reportFile' | 'directiveFile') =>
         }
         // -------------------------------------------------------------------------
 
+        // CHECK: If the file is already valid (completed), do not prompt again.
+        const validator = new Validator();
+        try {
+            if (role === 'ENGINEER') {
+                await validator.validateEngineerReport(filePath);
+            } else {
+                await validator.validateArchitectDirective(filePath);
+            }
+
+            // If validation passes, the file is DONE. We are waiting for the partner.
+            ctx.logger.info(`[WAIT] ${fileType} is already valid. Waiting for partner response.`);
+            ctx.agent.tell(`WAITING: You have already filled the ${fileType}.\nWaiting for the ${role === 'ENGINEER' ? 'Architect' : 'Engineer'}.`);
+            return 'STOP';
+        } catch (e) {
+            // Validation failed, proceed to prompt.
+        }
+
         // Build context-aware prompt for auto-mode
         let prompt = `
-═══════════════════════════════════════════════════════════════════════════════
-                              ACTION REQUIRED
-═══════════════════════════════════════════════════════════════════════════════
+# RELAY PROTOCOL MESSAGE
 
 Role: ${role}
 Action: Fill in the ${fileType}

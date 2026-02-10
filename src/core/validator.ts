@@ -41,6 +41,11 @@ export class Validator {
             throw new Error(`Report is curiously short (${content.length} chars). Did you actually write anything?`);
         }
 
+        // 5. Placeholder check
+        if (content.includes('[COMPLETED | FAILED | BLOCKED]')) {
+            throw new Error(`Report contains placeholder '[COMPLETED | FAILED | BLOCKED]'. You must select a status.`);
+        }
+
         return content;
     }
 
@@ -76,6 +81,11 @@ export class Validator {
         const verdictMatch = content.match(/# VERDICT\s*\n.*(APPROVE|REJECT)/i);
         if (!verdictMatch) {
             throw new Error(`Directive is malformed. Missing '# VERDICT' section with valid value (APPROVE|REJECT).`);
+        }
+
+        // Placeholder check
+        if (content.includes('[APPROVE | REJECT]')) {
+            throw new Error(`Directive contains placeholder '[APPROVE | REJECT]'. You must render a verdict.`);
         }
 
         return content;
