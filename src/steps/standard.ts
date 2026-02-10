@@ -325,28 +325,22 @@ ${ctx.currentTask.content}
         // Inject task reference for architect
         if (ctx.currentTask && role === 'ARCHITECT') {
             prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                         REVIEWING TASK ${ctx.currentTask.id}
-───────────────────────────────────────────────────────────────────────────────
+## REVIEW CONTEXT: TASK ${ctx.currentTask.id}
 
 Task: ${ctx.currentTask.title}
 File: ${ctx.currentTask.filename}
 
-## REQUIREMENTS
+### REQUIREMENTS
 ${ctx.currentTask.content}
 
 Review the engineer's report against this task's acceptance criteria.
-
-───────────────────────────────────────────────────────────────────────────────
 `;
         }
 
         // Inject Reinforcement Points (Hardening)
         if (role === 'ARCHITECT') {
             prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                            IMPORTANT REMINDERS
-───────────────────────────────────────────────────────────────────────────────
+## IMPORTANT REMINDERS
 1. TRUST NOTHING. Assume the Engineer's code is broken.
 2. VERIFY EVERYTHING. Don't just read it; prove it works.
 3. ZERO TOLERANCE. If you find a single flaw, REJECT. Do not "fix it later".
@@ -354,9 +348,7 @@ Review the engineer's report against this task's acceptance criteria.
 `;
         } else if (role === 'ENGINEER') {
             prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                            IMPORTANT REMINDERS
-───────────────────────────────────────────────────────────────────────────────
+## IMPORTANT REMINDERS
 1. OBEY THE DIRECTIVE. Do not improvise.
 2. VERIFY YOUR WORK. Unverified code is broken code.
 3. REPORT REALITY. If it fails, report FAILED. Do not lie.
@@ -364,17 +356,13 @@ Review the engineer's report against this task's acceptance criteria.
         }
 
         prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                            CRITICAL FINAL STEP
-───────────────────────────────────────────────────────────────────────────────
+## FINAL STEP
 
 When you have filled the file, you MUST run this command to submit:
 
 > relay ${role.toLowerCase()} ${ctx.args.feature} pulse
 
 If you do not run this, your work will be discarded.
-
-═══════════════════════════════════════════════════════════════════════════════
 `;
 
         // Inject Coding Guidelines (if present in .relay root)
@@ -385,9 +373,7 @@ If you do not run this, your work will be discarded.
         if (await fs.pathExists(guidelinesPath)) {
             const guidelines = await fs.readFile(guidelinesPath, 'utf-8');
             prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                            CODING GUIDELINES
-───────────────────────────────────────────────────────────────────────────────
+## CODING GUIDELINES
 ${guidelines}
 `;
         }
