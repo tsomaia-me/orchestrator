@@ -365,19 +365,6 @@ When you have filled the file, you MUST run this command to submit:
 If you do not run this, your work will be discarded.
 `;
 
-        // Inject Coding Guidelines (if present in .relay root)
-        // workDir is features/<feature>, so .relay is ../..
-        const relayDir = path.resolve(ctx.paths.workDir, '..', '..');
-        const guidelinesPath = path.join(relayDir, 'CODING_GUIDELINES.md');
-
-        if (await fs.pathExists(guidelinesPath)) {
-            const guidelines = await fs.readFile(guidelinesPath, 'utf-8');
-            prompt += `
-## CODING GUIDELINES
-${guidelines}
-`;
-        }
-
         ctx.agent.tell(prompt);
 
         // Always wait for user to complete their action
