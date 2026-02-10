@@ -365,8 +365,14 @@ Review the engineer's report against this task's acceptance criteria.
 
         prompt += `
 ───────────────────────────────────────────────────────────────────────────────
+                            CRITICAL FINAL STEP
+───────────────────────────────────────────────────────────────────────────────
 
-When finished: relay ${role.toLowerCase()} ${ctx.args.feature} pulse [--submit]
+When you have filled the file, you MUST run this command to submit:
+
+> relay ${role.toLowerCase()} ${ctx.args.feature} pulse
+
+If you do not run this, your work will be discarded.
 
 ═══════════════════════════════════════════════════════════════════════════════
 `;
