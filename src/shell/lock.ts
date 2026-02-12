@@ -46,11 +46,13 @@ export class LockManager {
                 }
 
                 if (timeoutMs > 0 && Date.now() - start >= timeoutMs) {
-                    throw new Error(`Could not acquire lock. Relay is busy.`);
+                    throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }
 
-                // Wait before retry
-                await new Promise((r) => setTimeout(r, 100));
+                // Exponential Backoff
+                const elapsed = Date.now() - start;
+                const delay = Math.min(1000, 50 * Math.pow(1.5, Math.floor(elapsed / 100)));
+                await new Promise((r) => setTimeout(r, delay));
             }
         }
     }

@@ -14,6 +14,7 @@ import { TOOLS } from './tools';
 import { Role } from '../core/state';
 import fs from 'fs-extra';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
 
 async function main() {
     // 1. Initialize Adapters
@@ -101,28 +102,42 @@ async function main() {
         TOOLS.plan_task.description,
         TOOLS.plan_task.schema.shape,
         async (args) => {
-            const { title, description } = args;
-            const taskId = String(Date.now()).slice(-6);
+            try {
+                const { title, description } = args;
+                const taskId = randomUUID();
 
-            await store.update((state) => {
-                const action = { type: 'START_TASK', taskId, taskTitle: title } as const;
-                validateAction(state, action);
-                return reducer(state, action);
-            });
+                await store.transaction(async (state) => {
+                    const action = {
+                        type: 'START_TASK',
+                        taskId,
+                        taskTitle: title,
+                        timestamp: Date.now()
+                    } as const;
+                    validateAction(state, action);
+                    const newState = reducer(state, action);
 
-            // Log task to .relay/tasks.jsonl (append-only) for structured visibility
-            const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
-            const logEntry = JSON.stringify({
-                id: taskId,
-                title,
-                status: 'planning',
-                createdAt: new Date().toISOString()
-            }) + '\n';
-            await fs.appendFile(logPath, logEntry, 'utf-8');
+                    // Log task to .relay/tasks.jsonl (append-only) for structured visibility
+                    const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
+                    const logEntry = JSON.stringify({
+                        id: taskId,
+                        title,
+                        status: 'planning',
+                        createdAt: new Date(action.timestamp).toISOString()
+                    }) + '\n';
+                    await fs.appendFile(logPath, logEntry, 'utf-8');
 
-            return {
-                content: [{ type: 'text', text: `Task ${taskId} started: ${title}` }],
-            };
+                    return { newState, result: null };
+                });
+
+                return {
+                    content: [{ type: 'text', text: `Task ${taskId} started: ${title}` }],
+                };
+            } catch (error: any) {
+                return {
+                    isError: true,
+                    content: [{ type: 'text', text: `Error starting task: ${error.message}` }],
+                };
+            }
         }
     );
 
@@ -132,27 +147,37 @@ async function main() {
         TOOLS.submit_directive.description,
         TOOLS.submit_directive.schema.shape,
         async (args) => {
-            const newState = await store.update((state) => {
-                const action = {
-                    type: 'SUBMIT_DIRECTIVE',
-                    taskId: args.taskId,
-                    decision: args.decision
-                } as const;
-                validateAction(state, action);
-                return reducer(state, action);
-            });
+            try {
+                await store.transaction(async (state) => {
+                    const action = {
+                        type: 'SUBMIT_DIRECTIVE',
+                        taskId: args.taskId,
+                        decision: args.decision,
+                        timestamp: Date.now()
+                    } as const;
+                    validateAction(state, action);
+                    const newState = reducer(state, action);
 
-            await exchange.writeExchange(
-                newState.activeTaskId!,
-                newState.activeTaskTitle!,
-                newState.iteration,
-                'architect',
-                args.content
-            );
+                    await exchange.writeExchange(
+                        newState.activeTaskId!,
+                        newState.activeTaskTitle!,
+                        newState.iteration,
+                        'architect',
+                        args.content
+                    );
 
-            return {
-                content: [{ type: 'text', text: `Directive submitted for task ${args.taskId}` }],
-            };
+                    return { newState, result: null };
+                });
+
+                return {
+                    content: [{ type: 'text', text: `Directive submitted for task ${args.taskId}` }],
+                };
+            } catch (error: any) {
+                return {
+                    isError: true,
+                    content: [{ type: 'text', text: `Error submitting directive: ${error.message}` }],
+                };
+            }
         }
     );
 
@@ -162,27 +187,37 @@ async function main() {
         TOOLS.submit_report.description,
         TOOLS.submit_report.schema.shape,
         async (args) => {
-            const newState = await store.update((state) => {
-                const action = {
-                    type: 'SUBMIT_REPORT',
-                    taskId: args.taskId,
-                    status: args.status
-                } as const;
-                validateAction(state, action);
-                return reducer(state, action);
-            });
+            try {
+                await store.transaction(async (state) => {
+                    const action = {
+                        type: 'SUBMIT_REPORT',
+                        taskId: args.taskId,
+                        status: args.status,
+                        timestamp: Date.now()
+                    } as const;
+                    validateAction(state, action);
+                    const newState = reducer(state, action);
 
-            await exchange.writeExchange(
-                newState.activeTaskId!,
-                newState.activeTaskTitle!,
-                newState.iteration,
-                'engineer',
-                args.content
-            );
+                    await exchange.writeExchange(
+                        newState.activeTaskId!,
+                        newState.activeTaskTitle!,
+                        newState.iteration,
+                        'engineer',
+                        args.content
+                    );
 
-            return {
-                content: [{ type: 'text', text: `Report submitted for task ${args.taskId}` }],
-            };
+                    return { newState, result: null };
+                });
+
+                return {
+                    content: [{ type: 'text', text: `Report submitted for task ${args.taskId}` }],
+                };
+            } catch (error: any) {
+                return {
+                    isError: true,
+                    content: [{ type: 'text', text: `Error submitting report: ${error.message}` }],
+                };
+            }
         }
     );
 

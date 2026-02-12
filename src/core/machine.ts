@@ -6,12 +6,12 @@
 import { RelayState, INITIAL_STATE, PulseStatus } from './state';
 
 export type Action =
-    | { type: 'START_TASK'; taskId: string; taskTitle: string }
-    | { type: 'SUBMIT_DIRECTIVE'; taskId: string; decision: 'APPROVE' | 'REJECT' }
-    | { type: 'SUBMIT_REPORT'; taskId: string; status: 'COMPLETED' | 'FAILED' };
+    | { type: 'START_TASK'; taskId: string; taskTitle: string; timestamp: number }
+    | { type: 'SUBMIT_DIRECTIVE'; taskId: string; decision: 'APPROVE' | 'REJECT'; timestamp: number }
+    | { type: 'SUBMIT_REPORT'; taskId: string; status: 'COMPLETED' | 'FAILED'; timestamp: number };
 
 export function reducer(state: RelayState = INITIAL_STATE, action: Action): RelayState {
-    const now = Date.now();
+    const now = action.timestamp;
 
     switch (action.type) {
         case 'START_TASK': {
