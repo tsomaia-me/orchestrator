@@ -7,7 +7,7 @@ import { RelayState, INITIAL_STATE, PulseStatus } from './state';
 
 export type Action =
     | { type: 'START_TASK'; taskId: string; taskTitle: string }
-    | { type: 'SUBMIT_DIRECTIVE'; taskId: string }
+    | { type: 'SUBMIT_DIRECTIVE'; taskId: string; decision: 'APPROVE' | 'REJECT' }
     | { type: 'SUBMIT_REPORT'; taskId: string; status: 'COMPLETED' | 'FAILED' };
 
 export function reducer(state: RelayState = INITIAL_STATE, action: Action): RelayState {
@@ -32,15 +32,34 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
             // Architect submits instructions
             // Transition: planning -> waiting_for_engineer
             // OR: waiting_for_architect -> waiting_for_engineer (Iterative loop)
+            // OR: waiting_for_architect -> completed (If decision is APPROVE)
 
             // Simple validation: ID must match
             if (state.activeTaskId !== action.taskId) {
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }
 
+            // Increment iteration if we are responding to a report (new cycle)
+            let nextIteration = state.iteration;
+            if (state.status === 'waiting_for_architect') {
+                nextIteration = state.iteration + 1;
+            }
+
+            // If approved, complete the task
+            if (action.decision === 'APPROVE') {
+                return {
+                    ...state,
+                    status: 'completed',
+                    iteration: nextIteration,
+                    lastActionBy: 'architect',
+                    updatedAt: now,
+                };
+            }
+
             return {
                 ...state,
                 status: 'waiting_for_engineer',
+                iteration: nextIteration,
                 lastActionBy: 'architect',
                 updatedAt: now,
             };

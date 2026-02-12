@@ -110,9 +110,14 @@ async function main() {
                 return reducer(state, action);
             });
 
-            // Log task to .relay/tasks.log (append-only) for visibility
-            const logPath = path.join(rootDir, '.relay', 'tasks.log');
-            const logEntry = `[${new Date().toISOString()}] Task ${taskId}: ${title}\n`;
+            // Log task to .relay/tasks.jsonl (append-only) for structured visibility
+            const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
+            const logEntry = JSON.stringify({
+                id: taskId,
+                title,
+                status: 'planning',
+                createdAt: new Date().toISOString()
+            }) + '\n';
             await fs.appendFile(logPath, logEntry, 'utf-8');
 
             return {
@@ -128,7 +133,11 @@ async function main() {
         TOOLS.submit_directive.schema.shape,
         async (args) => {
             const newState = await store.update((state) => {
-                const action = { type: 'SUBMIT_DIRECTIVE', taskId: args.taskId } as const;
+                const action = {
+                    type: 'SUBMIT_DIRECTIVE',
+                    taskId: args.taskId,
+                    decision: args.decision
+                } as const;
                 validateAction(state, action);
                 return reducer(state, action);
             });
