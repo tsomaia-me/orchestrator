@@ -51,6 +51,8 @@ async function main() {
                     lastExchangeContent: lastContent
                 };
 
+                // Debug log
+                console.error(`Serving context for ${role}: ${state.status}`);
                 return {
                     contents: [{
                         uri: uri.href,
@@ -107,8 +109,11 @@ async function main() {
                 validateAction(state, action);
                 return reducer(state, action);
             });
-            // TODO: Maybe write the initial task scaffold to disk in tasks/ ?
-            // For now, metadata kept in state.
+
+            // Log task to .relay/tasks.log (append-only) for visibility
+            const logPath = path.join(rootDir, '.relay', 'tasks.log');
+            const logEntry = `[${new Date().toISOString()}] Task ${taskId}: ${title}\n`;
+            await fs.appendFile(logPath, logEntry, 'utf-8');
 
             return {
                 content: [{ type: 'text', text: `Task ${taskId} started: ${title}` }],
