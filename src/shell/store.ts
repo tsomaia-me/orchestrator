@@ -85,8 +85,8 @@ export class Store {
     }
 
     /**
-     * V03: Update + side effect within lock. Rollback state on side-effect failure.
-     * Use for plan_task (tasks.jsonl append) so state and log stay in sync.
+     * V03: Update + side effect within lock. V-02: Side-effect first, then state.
+     * No rollback — if sideEffect fails we never touch state.
      */
     async updateWithSideEffect(
         updater: (state: RelayState) => RelayState,
@@ -96,16 +96,10 @@ export class Store {
         try {
             const state = await this.read();
             const newState = updater(state);
+            await sideEffect(newState);
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
             await fs.rename(tmpPath, this.statePath);
-            try {
-                await sideEffect(newState);
-            } catch (err) {
-                await fs.writeJson(tmpPath, state, { spaces: 2 });
-                await fs.rename(tmpPath, this.statePath);
-                throw err;
-            }
             return newState;
         } finally {
             await release();
@@ -136,7 +130,7 @@ export class Store {
         }
     }
 
-    async read(): Promise<RelayState> {
+    private async read(): Promise<RelayState> {
         if (await fs.pathExists(this.statePath)) {
             // V05: Remove orphan .tmp from crashed write (state.json exists but .tmp left behind)
             const tmpPath = this.statePath + '.tmp';

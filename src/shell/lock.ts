@@ -34,10 +34,16 @@ export class LockManager {
             try {
                 const releaseFn = await lockfile.lock(this.filePath, {
                     stale: 60 * 1000,
+                    update: 10 * 1000,
                     retries: { retries: 0 },
                 });
                 return releaseFn;
-            } catch (err) {
+            } catch (err: any) {
+                if (err?.code === 'ENOENT') {
+                    throw new Error(
+                        'Relay is not initialized. Run from a project with .relay/ or ensure init has completed.'
+                    );
+                }
                 if (timeoutMs > 0 && Date.now() - start >= timeoutMs) {
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }

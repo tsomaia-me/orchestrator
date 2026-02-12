@@ -26,6 +26,11 @@ describe('validateTaskId (V01)', () => {
         assert.throws(() => validateTaskId('task@1'), /Invalid taskId/);
         assert.throws(() => validateTaskId('task 1'), /Invalid taskId/);
     });
+
+    it('rejects taskId exceeding max length (V-03)', () => {
+        assert.throws(() => validateTaskId('a'.repeat(70)), /length exceeds 64/);
+        assert.doesNotThrow(() => validateTaskId('a'.repeat(64)));
+    });
 });
 
 describe('getExchangeFilename (V01)', () => {

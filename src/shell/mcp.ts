@@ -69,7 +69,17 @@ async function main() {
             `prompt-${role}`,
             `relay://prompts/${role}`,
             async (uri) => {
-                const packageRoot = path.resolve(__dirname, '..', '..');
+                // V-06: Robust package root resolution for dist, symlinked, or bundled installs
+                let packageRoot = path.resolve(__dirname, '..', '..');
+                if (!(await fs.pathExists(path.join(packageRoot, 'prompts', 'mcp')))) {
+                    try {
+                        packageRoot = path.dirname(
+                            require.resolve('orchestrator-relay/package.json', { paths: [process.cwd(), __dirname] })
+                        );
+                    } catch {
+                        packageRoot = process.cwd();
+                    }
+                }
                 const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
 
                 if (await fs.pathExists(promptPath)) {

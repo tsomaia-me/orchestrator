@@ -12,9 +12,15 @@ const TASK_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 /** V04: Max slug length to keep filename under 255 chars. taskId(36)+iter(3)+author(9)+suffix(4) ≈ 55. */
 const MAX_SLUG_LEN = 180;
 
+/** V-03: Max taskId length to keep filename under 255 chars. */
+const MAX_TASK_ID_LEN = 64;
+
 export function validateTaskId(id: string): void {
     if (!TASK_ID_REGEX.test(id)) {
         throw new Error(`Invalid taskId: must match ^[a-zA-Z0-9_-]+$`);
+    }
+    if (id.length > MAX_TASK_ID_LEN) {
+        throw new Error(`Invalid taskId: length exceeds ${MAX_TASK_ID_LEN} characters`);
     }
 }
 
