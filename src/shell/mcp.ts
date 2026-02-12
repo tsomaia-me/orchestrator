@@ -41,7 +41,7 @@ async function main() {
             `context-${role}`,
             `relay://context/${role}`,
             async (uri) => {
-                const state = await store.read();
+                const state = await store.readLocked();
                 const lastContent = await exchange.getLatestContent(state);
                 const instructions = getInstructionsForRole(state, role);
 
@@ -97,6 +97,7 @@ async function main() {
     // 4. Register Tools
 
     // Tool: Plan Task
+    // Remediation F2: Write state first, then side-effects (prevents ghost writes)
     server.tool(
         TOOLS.plan_task.name,
         TOOLS.plan_task.description,
@@ -105,29 +106,27 @@ async function main() {
             try {
                 const { title, description } = args;
                 const taskId = randomUUID();
+                const action = {
+                    type: 'START_TASK',
+                    taskId,
+                    taskTitle: title,
+                    timestamp: Date.now()
+                } as const;
 
-                await store.transaction(async (state) => {
-                    const action = {
-                        type: 'START_TASK',
-                        taskId,
-                        taskTitle: title,
-                        timestamp: Date.now()
-                    } as const;
+                const newState = await store.update((state) => {
                     validateAction(state, action);
-                    const newState = reducer(state, action);
-
-                    // Log task to .relay/tasks.jsonl (append-only) for structured visibility
-                    const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
-                    const logEntry = JSON.stringify({
-                        id: taskId,
-                        title,
-                        status: 'planning',
-                        createdAt: new Date(action.timestamp).toISOString()
-                    }) + '\n';
-                    await fs.appendFile(logPath, logEntry, 'utf-8');
-
-                    return { newState, result: null };
+                    return reducer(state, action);
                 });
+
+                // Side-effects after state is persisted
+                const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
+                const logEntry = JSON.stringify({
+                    id: taskId,
+                    title,
+                    status: 'planning',
+                    createdAt: new Date(action.timestamp).toISOString()
+                }) + '\n';
+                await fs.appendFile(logPath, logEntry, 'utf-8');
 
                 return {
                     content: [{ type: 'text', text: `Task ${taskId} started: ${title}` }],
@@ -142,32 +141,32 @@ async function main() {
     );
 
     // Tool: Submit Directive
+    // Remediation F2: Write state first, then side-effects
     server.tool(
         TOOLS.submit_directive.name,
         TOOLS.submit_directive.description,
         TOOLS.submit_directive.schema.shape,
         async (args) => {
             try {
-                await store.transaction(async (state) => {
-                    const action = {
-                        type: 'SUBMIT_DIRECTIVE',
-                        taskId: args.taskId,
-                        decision: args.decision,
-                        timestamp: Date.now()
-                    } as const;
+                const action = {
+                    type: 'SUBMIT_DIRECTIVE',
+                    taskId: args.taskId,
+                    decision: args.decision,
+                    timestamp: Date.now()
+                } as const;
+
+                const newState = await store.update((state) => {
                     validateAction(state, action);
-                    const newState = reducer(state, action);
-
-                    await exchange.writeExchange(
-                        newState.activeTaskId!,
-                        newState.activeTaskTitle!,
-                        newState.iteration,
-                        'architect',
-                        args.content
-                    );
-
-                    return { newState, result: null };
+                    return reducer(state, action);
                 });
+
+                await exchange.writeExchange(
+                    newState.activeTaskId!,
+                    newState.activeTaskTitle!,
+                    newState.iteration,
+                    'architect',
+                    args.content
+                );
 
                 return {
                     content: [{ type: 'text', text: `Directive submitted for task ${args.taskId}` }],
@@ -182,32 +181,32 @@ async function main() {
     );
 
     // Tool: Submit Report
+    // Remediation F2: Write state first, then side-effects
     server.tool(
         TOOLS.submit_report.name,
         TOOLS.submit_report.description,
         TOOLS.submit_report.schema.shape,
         async (args) => {
             try {
-                await store.transaction(async (state) => {
-                    const action = {
-                        type: 'SUBMIT_REPORT',
-                        taskId: args.taskId,
-                        status: args.status,
-                        timestamp: Date.now()
-                    } as const;
+                const action = {
+                    type: 'SUBMIT_REPORT',
+                    taskId: args.taskId,
+                    status: args.status,
+                    timestamp: Date.now()
+                } as const;
+
+                const newState = await store.update((state) => {
                     validateAction(state, action);
-                    const newState = reducer(state, action);
-
-                    await exchange.writeExchange(
-                        newState.activeTaskId!,
-                        newState.activeTaskTitle!,
-                        newState.iteration,
-                        'engineer',
-                        args.content
-                    );
-
-                    return { newState, result: null };
+                    return reducer(state, action);
                 });
+
+                await exchange.writeExchange(
+                    newState.activeTaskId!,
+                    newState.activeTaskTitle!,
+                    newState.iteration,
+                    'engineer',
+                    args.content
+                );
 
                 return {
                     content: [{ type: 'text', text: `Report submitted for task ${args.taskId}` }],

@@ -1,9 +1,11 @@
 /**
  * CORE: State Machine Reducer
  * Pure function: (State, Action) -> State
+ * Remediation F3: Reducer validates transitions; throws on invalid.
  */
 
 import { RelayState, INITIAL_STATE, PulseStatus } from './state';
+import { validateAction } from './rules';
 
 export type Action =
     | { type: 'START_TASK'; taskId: string; taskTitle: string; timestamp: number }
@@ -15,8 +17,7 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
 
     switch (action.type) {
         case 'START_TASK': {
-            // Architect starts a new task
-            // Transition: idle/completed -> planning
+            validateAction(state, action);
             return {
                 ...state,
                 status: 'planning',
@@ -29,12 +30,7 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
         }
 
         case 'SUBMIT_DIRECTIVE': {
-            // Architect submits instructions
-            // Transition: planning -> waiting_for_engineer
-            // OR: waiting_for_architect -> waiting_for_engineer (Iterative loop)
-            // OR: waiting_for_architect -> completed (If decision is APPROVE)
-
-            // Simple validation: ID must match
+            validateAction(state, action);
             if (state.activeTaskId !== action.taskId) {
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }
@@ -66,9 +62,7 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
         }
 
         case 'SUBMIT_REPORT': {
-            // Engineer submits work
-            // Transition: waiting_for_engineer -> waiting_for_architect
-
+            validateAction(state, action);
             if (state.activeTaskId !== action.taskId) {
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }

@@ -56,29 +56,24 @@ export class Store {
         }
     }
 
-    /**
-     * Atomic Transaction with Side Effects.
-     * Use this when you need to perform actions (like writing files) that must succeed
-     * BEFORE the state is updated.
-     * If executor throws, state is NOT written.
-     */
-    async transaction<T>(executor: (state: RelayState) => Promise<{ newState: RelayState; result: T }>): Promise<T> {
-        await this.lock.acquire();
-        try {
-            const state = await this.read();
-            const { newState, result } = await executor(state);
-            await fs.writeJson(this.statePath, newState, { spaces: 2 });
-            return result;
-        } finally {
-            await this.lock.release();
-        }
-    }
-
     async read(): Promise<RelayState> {
         if (!(await fs.pathExists(this.statePath))) {
             return INITIAL_STATE;
         }
         return await fs.readJson(this.statePath);
+    }
+
+    /**
+     * Lock-protected read. Use for consistency-sensitive paths (e.g. context resource).
+     * Remediation F4: Prevents read skew when a writer is mid-transaction.
+     */
+    async readLocked(): Promise<RelayState> {
+        await this.lock.acquire();
+        try {
+            return await this.read();
+        } finally {
+            await this.lock.release();
+        }
     }
 
     getRootDir(): string {

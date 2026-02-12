@@ -1,6 +1,10 @@
 /**
  * SHELL: Exchange Manager
  * Handles reading/writing exchange files to disk.
+ *
+ * Expected layout: .relay/exchanges/{taskId}-{iter}-{author}-{slug}.md
+ * Ordering (F5 remediation): state.json is persisted before exchange files.
+ * Exchange writes are idempotent (overwrite by path).
  */
 
 import fs from 'fs-extra';
