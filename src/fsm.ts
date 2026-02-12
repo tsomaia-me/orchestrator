@@ -3,6 +3,7 @@
  * No I/O, no async, no mutation.
  */
 
+import path from 'path';
 import type { FSMInput, RelayState, TaskInfo } from './state';
 import type { Effect } from './effects';
 import {
@@ -12,6 +13,7 @@ import {
   promptUser,
   exit,
   createTaskScaffold,
+  showPromptFile,
 } from './effects';
 import { getNextExchangePath } from './resolver';
 
@@ -120,16 +122,39 @@ function runArchitectFSM(input: FSMInput): [RelayState, Effect[]] {
         ],
       ];
     }
-    const { path: dirPath } = getNextExchangePath(newState, workDir, 'architect');
+    const { path: dirPath, iteration } = getNextExchangePath(newState, workDir, 'architect');
     const submitCmd = `relay architect ${feature} pulse --submit`;
-    const [promptMsg, path] = buildArchitectPrompt(input, dirPath || directivePath, submitCmd);
+    const [promptMsg, directivePathArg] = buildArchitectPrompt(input, dirPath || directivePath, submitCmd);
+
+    // Iteration 1 means start of task -> show full prompt
+    const effects: Effect[] = [persistState(newState)];
+
+    if (iteration <= 1) {
+      effects.push(
+        showPromptFile(
+          path.join(workDir, 'prompts', 'architect.md'),
+          'architect',
+          feature
+        )
+      );
+    }
+
+    if (iteration > 1) {
+      // Prepend reinforcement to the message
+      const reinforcement =
+        'REINFORCEMENT: Zero Trust. Reject ANY flaw. Verify everything manually.\n\n';
+      effects.push(
+        promptUser(reinforcement + promptMsg, submitCmd, directivePathArg)
+      );
+    } else {
+      effects.push(promptUser(promptMsg, submitCmd, directivePathArg));
+    }
+
+    effects.push(exit(0));
+
     return [
       newState,
-      [
-        persistState(newState),
-        promptUser(promptMsg, submitCmd, path),
-        exit(0),
-      ],
+      effects,
     ];
   }
 
@@ -169,7 +194,11 @@ function runArchitectFSM(input: FSMInput): [RelayState, Effect[]] {
 
   const submitCmd = `relay architect ${feature} pulse --submit`;
   const [promptMsg, p] = buildArchitectPrompt(input, directivePath, submitCmd);
-  return [newState, [promptUser(promptMsg, submitCmd, p), exit(0)]];
+
+  // Reinforcement always on subsequent turns (this block is for reviewing report)
+  const reinforcement = "REINFORCEMENT: Zero Trust. Reject ANY flaw. Verify everything manually.\n\n";
+
+  return [newState, [promptUser(reinforcement + promptMsg, submitCmd, p), exit(0)]];
 }
 
 function buildArchitectPrompt(
@@ -180,6 +209,12 @@ function buildArchitectPrompt(
   const task = input.tasks.find((t) => t.id === input.state.currentTask);
   const msg = `Write your directive to: ${directivePath}
 ${task ? `\nTask: ${task.id} - ${task.title}\n---\n${task.content}\n---` : ''}
+
+${input.reportContent
+      ? `\n=== ENGINEER REPORT ===\n${input.reportContent}\n=======================\n`
+      : ''
+    }
+
 Review the Engineer's report. REJECT if any doubt. Zero trust.
 When done, run: ${submitCmd}`;
   return [msg, directivePath];
@@ -239,7 +274,31 @@ Implement task: ${task.id} - ${task.title}
 ---
 ${task.content}
 ---
+
+${directiveContent
+      ? `\n=== ARCHITECT DIRECTIVE ===\n${directiveContent}\n===========================\n`
+      : ''
+    }
+
 Follow the directive exactly. When done, run: ${submitCmd}`;
 
-  return [state, [promptUser(promptMsg, submitCmd, reportPath), exit(0)]];
+  const effects: Effect[] = [];
+
+  // Check iteration for engineer.
+  // We don't have explicit iteration calc here easily without `getNextExchangePath` equivalent 
+  // or checking `state.iteration`.
+  // If `state.lastAuthor === 'architect'`, then it is the engineer's turn.
+  // The iteration is `state.iteration`. 
+  // If iteration is 1, it is the first task.
+
+  if (state.iteration <= 1) {
+    effects.push(showPromptFile(path.join(workDir, 'prompts', 'engineer.md'), 'engineer', feature));
+    effects.push(promptUser(promptMsg, submitCmd, reportPath));
+  } else {
+    const reinforcement = "REINFORCEMENT: Obey the directive exactly. Do not improvise. Report reality.\n\n";
+    effects.push(promptUser(reinforcement + promptMsg, submitCmd, reportPath));
+  }
+
+  effects.push(exit(0));
+  return [state, effects];
 }

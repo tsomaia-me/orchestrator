@@ -205,7 +205,7 @@ async function runEffect(
       try {
         await watchStateUntil(statePath, effect.condition);
       } finally {
-        if (ctx.lock) await ctx.lock.acquire(5000);
+        if (ctx.lock) await ctx.lock.acquire(3600000);
       }
       break;
     case 'prompt-user':
@@ -272,15 +272,29 @@ async function watchStateUntil(
   statePath: string,
   condition: (s: RelayState) => boolean
 ): Promise<void> {
+  // 1. Initial check
+  let s = await loadStateFromPath(statePath);
+  if (condition(s)) return;
+
   while (true) {
-    const s = await loadStateFromPath(statePath);
-    if (condition(s)) return;
-    await new Promise<void>((resolve) => {
-      const w = fs.watch(statePath, () => {
-        w.close();
-        resolve();
-      });
+    // 2. Setup watcher
+    let resolveWatch: () => void;
+    // eslint-disable-next-line
+    const watchPromise = new Promise<void>((r) => { resolveWatch = r; });
+    const watcher = fs.watch(statePath, () => {
+      watcher.close();
+      resolveWatch();
     });
+
+    // 3. Check AGAIN (race condition fix)
+    s = await loadStateFromPath(statePath);
+    if (condition(s)) {
+      watcher.close();
+      return;
+    }
+
+    // 4. Wait for watcher (if condition was still false)
+    await watchPromise;
   }
 }
 
@@ -662,7 +676,7 @@ export async function main(
     }
     lock = new LockManager(getFeatureDir(root, feature));
     try {
-      await lock.acquire(2000);
+      await lock.acquire(3600000);
     } catch {
       console.error('\n🔒 [LOCKED] Another Relay process is running.\n');
       return 1;

@@ -15,6 +15,13 @@ export function validateReport(content: string): { valid: boolean; error?: strin
   if (!content.includes('## VERIFICATION')) {
     return { valid: false, error: "Missing '## VERIFICATION' section." };
   }
+  const verificationContent = content.split('## VERIFICATION')[1].split('##')[0].trim();
+  if (verificationContent.length < 10 || verificationContent.includes('TODO')) {
+    return {
+      valid: false,
+      error: "Verification section is too short or contains 'TODO'. Verify your work!",
+    };
+  }
   if (content.includes('[COMPLETED | FAILED | BLOCKED]')) {
     return { valid: false, error: 'Report contains placeholder. Select a status.' };
   }
