@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import path from 'path';
 import { main } from './main';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const pkg = require('../package.json');
 
 function getPackageRoot(): string {

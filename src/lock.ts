@@ -16,8 +16,9 @@ export class LockManager {
         await fs.mkdir(this.lockPath);
         this.hasLock = true;
         return;
-      } catch (e: any) {
-        if (e.code !== 'EEXIST') throw e;
+      } catch (error: unknown) {
+        const e = error as { code?: string };
+        if (e.code !== 'EEXIST') throw error;
 
         // Check for stale lock
         try {
