@@ -64,20 +64,20 @@ describe('Relay State Machine', () => {
         });
 
         assert.strictEqual(reportState.status, 'waiting_for_architect');
-        assert.strictEqual(reportState.iteration, 1);
+        assert.strictEqual(reportState.iteration, 2); // V07: iteration increments on SUBMIT_REPORT
     });
 
-    it('should increment iteration on next directive (Loop)', () => {
-        // Setup state where Architect has received a report
+    it('should NOT increment iteration on directive (V07: monotonic on report only)', () => {
+        // Setup state where Architect has received a report (iteration already bumped by report)
         const state = {
             ...INITIAL_STATE,
             status: 'waiting_for_architect',
             activeTaskId: '123',
-            iteration: 1,
+            iteration: 2,
             lastActionBy: 'engineer'
         } as const;
 
-        // Architect rejects work -> New Directive -> Next Iteration
+        // Architect rejects work -> New Directive -> Iteration unchanged
         const nextState = reducer(state as any, {
             type: 'SUBMIT_DIRECTIVE',
             taskId: '123',
@@ -106,6 +106,6 @@ describe('Relay State Machine', () => {
         });
 
         assert.strictEqual(nextState.status, 'completed');
-        assert.strictEqual(nextState.iteration, 3); // Iteration increments on final turn
+        assert.strictEqual(nextState.iteration, 2); // V07: directive does not increment
     });
 });

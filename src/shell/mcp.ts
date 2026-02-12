@@ -10,6 +10,7 @@ import { Store } from './store';
 import { ExchangeManager } from './exchange';
 import { reducer } from '../core/machine';
 import { validateAction, getInstructionsForRole } from '../core/rules';
+import { validateTaskId } from '../core/paths';
 import { TOOLS } from './tools';
 import { Role } from '../core/state';
 import fs from 'fs-extra';
@@ -20,8 +21,8 @@ async function main() {
     // 1. Initialize Adapters
     const rootDir = await Store.findRoot() || process.cwd();
 
-    const store = new Store(rootDir);
     const exchange = new ExchangeManager(rootDir);
+    const store = new Store(rootDir, exchange);
 
     await store.init();
     await exchange.init();
@@ -41,15 +42,14 @@ async function main() {
             `context-${role}`,
             `relay://context/${role}`,
             async (uri) => {
-                const state = await store.readLocked();
-                const lastContent = await exchange.getLatestContent(state);
+                const { state, lastExchangeContent } = await store.readContext();
                 const instructions = getInstructionsForRole(state, role);
 
                 const contextView = {
                     role,
                     state,
                     instructions,
-                    lastExchangeContent: lastContent
+                    lastExchangeContent
                 };
 
                 // Debug log
@@ -148,6 +148,7 @@ async function main() {
         TOOLS.submit_directive.schema.shape,
         async (args) => {
             try {
+                validateTaskId(args.taskId);
                 const action = {
                     type: 'SUBMIT_DIRECTIVE',
                     taskId: args.taskId,
@@ -155,17 +156,20 @@ async function main() {
                     timestamp: Date.now()
                 } as const;
 
-                const newState = await store.update((state) => {
-                    validateAction(state, action);
-                    return reducer(state, action);
-                });
-
-                await exchange.writeExchange(
-                    newState.activeTaskId!,
-                    newState.activeTaskTitle!,
-                    newState.iteration,
-                    'architect',
-                    args.content
+                await store.updateWithExchange(
+                    (state) => {
+                        validateAction(state, action);
+                        return reducer(state, action);
+                    },
+                    async (newState) => {
+                        await exchange.writeExchange(
+                            newState.activeTaskId!,
+                            newState.activeTaskTitle!,
+                            newState.iteration,
+                            'architect',
+                            args.content
+                        );
+                    }
                 );
 
                 return {
@@ -188,6 +192,7 @@ async function main() {
         TOOLS.submit_report.schema.shape,
         async (args) => {
             try {
+                validateTaskId(args.taskId);
                 const action = {
                     type: 'SUBMIT_REPORT',
                     taskId: args.taskId,
@@ -195,17 +200,20 @@ async function main() {
                     timestamp: Date.now()
                 } as const;
 
-                const newState = await store.update((state) => {
-                    validateAction(state, action);
-                    return reducer(state, action);
-                });
-
-                await exchange.writeExchange(
-                    newState.activeTaskId!,
-                    newState.activeTaskTitle!,
-                    newState.iteration,
-                    'engineer',
-                    args.content
+                await store.updateWithExchange(
+                    (state) => {
+                        validateAction(state, action);
+                        return reducer(state, action);
+                    },
+                    async (newState) => {
+                        await exchange.writeExchange(
+                            newState.activeTaskId!,
+                            newState.activeTaskTitle!,
+                            newState.iteration,
+                            'engineer',
+                            args.content
+                        );
+                    }
                 );
 
                 return {

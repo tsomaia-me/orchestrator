@@ -1,0 +1,38 @@
+/**
+ * CORE: Path Logic Tests
+ * V01: Path traversal prevention via taskId whitelist.
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import { validateTaskId, getExchangeFilename } from './paths';
+
+describe('validateTaskId (V01)', () => {
+    it('accepts valid taskIds', () => {
+        assert.doesNotThrow(() => validateTaskId('abc123'));
+        assert.doesNotThrow(() => validateTaskId('task-001'));
+        assert.doesNotThrow(() => validateTaskId('task_002'));
+        assert.doesNotThrow(() => validateTaskId('a'));
+    });
+
+    it('rejects path traversal attempts', () => {
+        assert.throws(() => validateTaskId('../../../etc/passwd'), /Invalid taskId/);
+        assert.throws(() => validateTaskId('..'), /Invalid taskId/);
+        assert.throws(() => validateTaskId('a/b'), /Invalid taskId/);
+        assert.throws(() => validateTaskId('a\\b'), /Invalid taskId/);
+    });
+
+    it('rejects invalid characters', () => {
+        assert.throws(() => validateTaskId('task@1'), /Invalid taskId/);
+        assert.throws(() => validateTaskId('task 1'), /Invalid taskId/);
+    });
+});
+
+describe('getExchangeFilename (V01)', () => {
+    it('validates taskId before building filename', () => {
+        assert.throws(
+            () => getExchangeFilename('bad..id', 'Title', 1, 'architect'),
+            /Invalid taskId/
+        );
+    });
+});

@@ -35,11 +35,8 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }
 
-            // Increment iteration if we are responding to a report (new cycle)
-            let nextIteration = state.iteration;
-            if (state.status === 'waiting_for_architect') {
-                nextIteration = state.iteration + 1;
-            }
+            // V07: Iteration is monotonic, incremented only on SUBMIT_REPORT. No status-based logic.
+            const nextIteration = state.iteration;
 
             // If approved, complete the task
             if (action.decision === 'APPROVE') {
@@ -71,14 +68,13 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 ? 'waiting_for_architect' // Architect reviews completion
                 : 'waiting_for_architect'; // Architect reviews failure
 
+            // V07: Monotonic iteration — increment on every SUBMIT_REPORT (engineer turn).
+            // Decouples iteration from status strings.
             return {
                 ...state,
                 status: nextStatus,
+                iteration: state.iteration + 1,
                 lastActionBy: 'engineer',
-                // Increment iteration only after a full cycle (Arch -> Eng -> Arch?)
-                // Let's increment on report submission to signify a "Turn" complete?
-                // Or keep it simple: Iteration increases when Architect creates a new Directive (Next Loop).
-                // Let's keep iteration stable here.
                 updatedAt: now,
             };
         }

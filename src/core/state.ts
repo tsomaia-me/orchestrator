@@ -16,7 +16,7 @@ export interface RelayState {
     readonly status: PulseStatus;
     readonly activeTaskId: string | null;
     readonly activeTaskTitle: string | null;
-    /** Iteration counter. 1-based. */
+    /** Iteration counter. 1-based. V07: Incremented on every SUBMIT_REPORT (engineer turn). Monotonic, independent of status. */
     readonly iteration: number;
     /** Who performed the last significant action? */
     readonly lastActionBy: Role | null;

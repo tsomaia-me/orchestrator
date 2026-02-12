@@ -6,18 +6,24 @@
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
+import lockfile from 'proper-lockfile';
 import { RelayState, INITIAL_STATE } from '../core/state';
 import { LockManager } from './lock';
+import { ExchangeManager } from './exchange';
+
+export type ExchangeWriter = (newState: RelayState) => Promise<void>;
 
 export class Store {
     private rootDir: string;
     private statePath: string;
     private lock: LockManager;
+    private exchange: ExchangeManager;
 
-    constructor(rootDir: string) {
+    constructor(rootDir: string, exchange?: ExchangeManager) {
         this.rootDir = rootDir;
         this.statePath = path.join(rootDir, '.relay', 'state.json');
         this.lock = new LockManager(path.join(rootDir, '.relay'));
+        this.exchange = exchange ?? new ExchangeManager(rootDir);
     }
 
     static async findRoot(startDir: string = process.cwd()): Promise<string | null> {
@@ -34,10 +40,28 @@ export class Store {
         return null;
     }
 
+    /**
+     * V05: Lock init sentinel during creation — proper-lockfile requires file to exist.
+     * We lock .relay/init.lock (created empty if missing) to serialize state.json creation.
+     */
     async init(): Promise<void> {
-        await fs.ensureDir(path.join(this.rootDir, '.relay'));
-        if (!(await fs.pathExists(this.statePath))) {
-            await fs.writeJson(this.statePath, INITIAL_STATE, { spaces: 2 });
+        const relayDir = path.join(this.rootDir, '.relay');
+        await fs.ensureDir(relayDir);
+        const initLockPath = path.join(relayDir, 'init.lock');
+        await fs.ensureFile(initLockPath);
+
+        const release = await lockfile.lock(initLockPath, {
+            stale: 60 * 1000,
+            retries: { retries: 10, minTimeout: 100, maxTimeout: 500 },
+        });
+        try {
+            if (!(await fs.pathExists(this.statePath))) {
+                const tmpPath = this.statePath + '.tmp';
+                await fs.writeJson(tmpPath, INITIAL_STATE, { spaces: 2 });
+                await fs.rename(tmpPath, this.statePath);
+            }
+        } finally {
+            await release();
         }
     }
 
@@ -45,22 +69,58 @@ export class Store {
      * Atomic Update: Lock -> Read -> Update -> Write -> Unlock
      */
     async update(updater: (state: RelayState) => RelayState): Promise<RelayState> {
-        await this.lock.acquire();
+        const release = await this.lock.acquire();
         try {
             const state = await this.read();
             const newState = updater(state);
-            await fs.writeJson(this.statePath, newState, { spaces: 2 });
+            // V03: Atomic write — write to .tmp then rename
+            const tmpPath = this.statePath + '.tmp';
+            await fs.writeJson(tmpPath, newState, { spaces: 2 });
+            await fs.rename(tmpPath, this.statePath);
             return newState;
         } finally {
-            await this.lock.release();
+            await release();
+        }
+    }
+
+    /**
+     * V04/V06: Update + exchange write within lock. Rollback state on exchange failure.
+     * Lock is never released until state and exchange I/O are confirmed.
+     */
+    async updateWithExchange(
+        updater: (state: RelayState) => RelayState,
+        exchangeWrite: ExchangeWriter
+    ): Promise<RelayState> {
+        const release = await this.lock.acquire();
+        try {
+            const state = await this.read();
+            const newState = updater(state);
+            const tmpPath = this.statePath + '.tmp';
+            await fs.writeJson(tmpPath, newState, { spaces: 2 });
+            await fs.rename(tmpPath, this.statePath);
+            try {
+                await exchangeWrite(newState);
+            } catch (err) {
+                await fs.writeJson(tmpPath, state, { spaces: 2 });
+                await fs.rename(tmpPath, this.statePath);
+                throw err;
+            }
+            return newState;
+        } finally {
+            await release();
         }
     }
 
     async read(): Promise<RelayState> {
-        if (!(await fs.pathExists(this.statePath))) {
-            return INITIAL_STATE;
+        if (await fs.pathExists(this.statePath)) {
+            return await fs.readJson(this.statePath);
         }
-        return await fs.readJson(this.statePath);
+        // V03: Orphaned .tmp from crashed write — treat as failed, remove
+        const tmpPath = this.statePath + '.tmp';
+        if (await fs.pathExists(tmpPath)) {
+            await fs.remove(tmpPath);
+        }
+        return INITIAL_STATE;
     }
 
     /**
@@ -68,11 +128,25 @@ export class Store {
      * Remediation F4: Prevents read skew when a writer is mid-transaction.
      */
     async readLocked(): Promise<RelayState> {
-        await this.lock.acquire();
+        const release = await this.lock.acquire();
         try {
             return await this.read();
         } finally {
-            await this.lock.release();
+            await release();
+        }
+    }
+
+    /**
+     * V06: Lock-held read of state + exchange content. Prevents read skew.
+     */
+    async readContext(): Promise<{ state: RelayState; lastExchangeContent: string | null }> {
+        const release = await this.lock.acquire();
+        try {
+            const state = await this.read();
+            const lastExchangeContent = await this.exchange.getLatestContent(state);
+            return { state, lastExchangeContent };
+        } finally {
+            await release();
         }
     }
 

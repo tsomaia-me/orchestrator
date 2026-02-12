@@ -1,26 +1,28 @@
 /**
  * SHELL: Lock Manager
  * Uses proper-lockfile for PID-based ownership and safe stale lock handling.
- * Remediation F1: Eliminates race condition in lock cleanup.
+ * V02: Returns release function as closure to caller — one lock, one owner.
+ * No instance-state dependency; prevents concurrent acquire from overwriting releaseFn.
  */
 
 import lockfile from 'proper-lockfile';
 import fs from 'fs-extra';
 import path from 'path';
 
+export type ReleaseFn = () => Promise<void>;
+
 export class LockManager {
     private filePath: string;
-    private releaseFn: (() => Promise<void>) | null = null;
 
     constructor(targetDir: string) {
         this.filePath = path.join(targetDir, 'state.json');
     }
 
     /**
-     * Acquire lock with retries.
-     * Uses proper-lockfile: PID-based ownership, safe stale detection.
+     * Acquire lock with retries. Returns release function as closure.
+     * Caller must call release() in finally block.
      */
-    async acquire(timeoutMs = 5000): Promise<void> {
+    async acquire(timeoutMs = 5000): Promise<ReleaseFn> {
         await fs.ensureDir(path.dirname(this.filePath));
         // proper-lockfile requires the file to exist. Store.init() creates state.json before first use.
 
@@ -30,11 +32,11 @@ export class LockManager {
 
         for (let i = 0; i < retries; i++) {
             try {
-                this.releaseFn = await lockfile.lock(this.filePath, {
+                const releaseFn = await lockfile.lock(this.filePath, {
                     stale: 60 * 60 * 1000,
                     retries: { retries: 0 },
                 });
-                return;
+                return releaseFn;
             } catch (err) {
                 if (timeoutMs > 0 && Date.now() - start >= timeoutMs) {
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
@@ -43,15 +45,5 @@ export class LockManager {
             }
         }
         throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
-    }
-
-    async release(): Promise<void> {
-        if (!this.releaseFn) return;
-        try {
-            await this.releaseFn();
-        } catch {
-            // Ignore
-        }
-        this.releaseFn = null;
     }
 }
