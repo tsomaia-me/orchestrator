@@ -9,6 +9,9 @@ import path from 'path';
 /** V01: Reject taskIds that could cause path traversal. Whitelist: alphanumeric, hyphen, underscore. */
 const TASK_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
+/** V04: Max slug length to keep filename under 255 chars. taskId(36)+iter(3)+author(9)+suffix(4) ≈ 55. */
+const MAX_SLUG_LEN = 180;
+
 export function validateTaskId(id: string): void {
     if (!TASK_ID_REGEX.test(id)) {
         throw new Error(`Invalid taskId: must match ^[a-zA-Z0-9_-]+$`);
@@ -36,7 +39,7 @@ export function getExchangeFilename(
 ): string {
     validateTaskId(taskId);
     const iterStr = String(iteration).padStart(3, '0');
-    const slug = slugify(taskTitle);
+    const slug = slugify(taskTitle).slice(0, MAX_SLUG_LEN);
     return `${taskId}-${iterStr}-${author}-${slug}.md`;
 }
 

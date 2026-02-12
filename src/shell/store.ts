@@ -12,6 +12,7 @@ import { LockManager } from './lock';
 import { ExchangeManager } from './exchange';
 
 export type ExchangeWriter = (newState: RelayState) => Promise<void>;
+export type SideEffectFn = (newState: RelayState) => Promise<void>;
 
 export class Store {
     private rootDir: string;
@@ -84,12 +85,12 @@ export class Store {
     }
 
     /**
-     * V04/V06: Update + exchange write within lock. Rollback state on exchange failure.
-     * Lock is never released until state and exchange I/O are confirmed.
+     * V03: Update + side effect within lock. Rollback state on side-effect failure.
+     * Use for plan_task (tasks.jsonl append) so state and log stay in sync.
      */
-    async updateWithExchange(
+    async updateWithSideEffect(
         updater: (state: RelayState) => RelayState,
-        exchangeWrite: ExchangeWriter
+        sideEffect: SideEffectFn
     ): Promise<RelayState> {
         const release = await this.lock.acquire();
         try {
@@ -99,7 +100,7 @@ export class Store {
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
             await fs.rename(tmpPath, this.statePath);
             try {
-                await exchangeWrite(newState);
+                await sideEffect(newState);
             } catch (err) {
                 await fs.writeJson(tmpPath, state, { spaces: 2 });
                 await fs.rename(tmpPath, this.statePath);
@@ -111,8 +112,35 @@ export class Store {
         }
     }
 
+    /**
+     * V04/V06: Update + exchange write within lock. V01: Write exchange first, then state.
+     * No rollback — if exchange fails we never touch state; if state fails we may have orphan exchange.
+     */
+    async updateWithExchange(
+        updater: (state: RelayState) => RelayState,
+        exchangeWrite: ExchangeWriter
+    ): Promise<RelayState> {
+        const release = await this.lock.acquire();
+        try {
+            const state = await this.read();
+            const newState = updater(state);
+            // V01: Exchange first — if it throws, state never changes; no rollback needed
+            await exchangeWrite(newState);
+            // Then state (tmp+rename)
+            const tmpPath = this.statePath + '.tmp';
+            await fs.writeJson(tmpPath, newState, { spaces: 2 });
+            await fs.rename(tmpPath, this.statePath);
+            return newState;
+        } finally {
+            await release();
+        }
+    }
+
     async read(): Promise<RelayState> {
         if (await fs.pathExists(this.statePath)) {
+            // V05: Remove orphan .tmp from crashed write (state.json exists but .tmp left behind)
+            const tmpPath = this.statePath + '.tmp';
+            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath).catch(() => {});
             return await fs.readJson(this.statePath);
         }
         // V03: Orphaned .tmp from crashed write — treat as failed, remove

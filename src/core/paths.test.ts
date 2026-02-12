@@ -36,3 +36,11 @@ describe('getExchangeFilename (V01)', () => {
         );
     });
 });
+
+describe('getExchangeFilename (V04)', () => {
+    it('truncates slug to keep filename under 255 chars', () => {
+        const longTitle = 'a'.repeat(400);
+        const filename = getExchangeFilename('abc-123-def', longTitle, 1, 'architect');
+        assert.ok(filename.length <= 255, `filename length ${filename.length} exceeds 255`);
+    });
+});

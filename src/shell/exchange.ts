@@ -67,9 +67,12 @@ export class ExchangeManager {
             author
         );
 
-        if (await fs.pathExists(filePath)) {
-            return await fs.readFile(filePath, 'utf-8');
+        // V06: State implies file should exist; throw if missing (manual deletion or corruption)
+        if (!(await fs.pathExists(filePath))) {
+            throw new Error(
+                `Exchange file missing: ${path.basename(filePath)}. State suggests it should exist — possible manual deletion or corruption.`
+            );
         }
-        return null;
+        return await fs.readFile(filePath, 'utf-8');
     }
 }

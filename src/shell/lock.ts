@@ -33,7 +33,7 @@ export class LockManager {
         for (let i = 0; i < retries; i++) {
             try {
                 const releaseFn = await lockfile.lock(this.filePath, {
-                    stale: 60 * 60 * 1000,
+                    stale: 60 * 1000,
                     retries: { retries: 0 },
                 });
                 return releaseFn;

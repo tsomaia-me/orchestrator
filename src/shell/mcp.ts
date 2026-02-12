@@ -113,20 +113,22 @@ async function main() {
                     timestamp: Date.now()
                 } as const;
 
-                const newState = await store.update((state) => {
-                    validateAction(state, action);
-                    return reducer(state, action);
-                });
-
-                // Side-effects after state is persisted
-                const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
-                const logEntry = JSON.stringify({
-                    id: taskId,
-                    title,
-                    status: 'planning',
-                    createdAt: new Date(action.timestamp).toISOString()
-                }) + '\n';
-                await fs.appendFile(logPath, logEntry, 'utf-8');
+                const newState = await store.updateWithSideEffect(
+                    (state) => {
+                        validateAction(state, action);
+                        return reducer(state, action);
+                    },
+                    async () => {
+                        const logPath = path.join(rootDir, '.relay', 'tasks.jsonl');
+                        const logEntry = JSON.stringify({
+                            id: taskId,
+                            title,
+                            status: 'planning',
+                            createdAt: new Date(action.timestamp).toISOString()
+                        }) + '\n';
+                        await fs.appendFile(logPath, logEntry, 'utf-8');
+                    }
+                );
 
                 return {
                     content: [{ type: 'text', text: `Task ${taskId} started: ${title}` }],
