@@ -171,19 +171,58 @@ export const awaitFile = (filePathKey: 'reportFile' | 'directiveFile') =>
         const fileName = path.basename(filePath);
 
         if (!await fs.pathExists(filePath)) {
-            ctx.agent.tell(`WAITING: ${fileName} not found.\nCreate it and run relay again.`);
-            return 'WAIT';
+            // BLOCKING MODE (Pulse)
+            if (ctx.lock) {
+                ctx.logger.info(`[WAIT] Waiting for ${fileName}...`);
+                await ctx.lock.release();
+
+                // Poll until file exists
+                while (!await fs.pathExists(filePath)) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+
+                // Re-acquire lock to continue safely
+                try {
+                    await ctx.lock.acquire();
+                } catch (e) {
+                    ctx.logger.error("Failed to re-acquire lock after waiting.");
+                    process.exit(1);
+                }
+
+                // Continue execution (don't return WAIT, we found it!)
+            } else {
+                ctx.agent.tell(`WAITING: ${fileName} not found.\nCreate it and run relay again.`);
+                return 'WAIT';
+            }
         }
 
         const currentHash = await hashFile(filePath);
 
         if (ctx.memory[hashKey] === currentHash) {
-            ctx.agent.tell(`WAITING: ${fileName} unchanged since last read.\nUpdate it and run relay again.`);
-            return 'WAIT';
+            // BLOCKING MODE (Pulse) - Content unchanged
+            if (ctx.lock) {
+                ctx.logger.info(`[WAIT] Waiting for ${fileName} to update...`);
+                await ctx.lock.release();
+
+                // Poll until hash changes
+                while (await hashFile(filePath) === currentHash) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+
+                try {
+                    await ctx.lock.acquire();
+                } catch (e) {
+                    ctx.logger.error("Failed to re-acquire lock after waiting.");
+                    process.exit(1);
+                }
+            } else {
+                ctx.agent.tell(`WAITING: ${fileName} unchanged since last read.\nUpdate it and run relay again.`);
+                return 'WAIT';
+            }
         }
 
         // File exists and is new/changed
-        ctx.memory[hashKey] = currentHash;
+        ctx.memory[hashKey] = await hashFile(filePath); // Re-hash to get new value
         ctx.logger.info(`[FILE] ${fileName} detected (new or changed)`);
         return 'CONTINUE';
     });
@@ -295,89 +334,86 @@ export const promptWrite = (filePathKey: 'reportFile' | 'directiveFile') =>
 
         // CHECK: If the file is already valid (completed), do not prompt again.
         const validator = new Validator();
+        let isValid = false;
         try {
             if (role === 'ENGINEER') {
                 await validator.validateEngineerReport(filePath);
             } else {
                 await validator.validateArchitectDirective(filePath);
             }
-
-            // If validation passes, the file is DONE. We are waiting for the partner.
-            ctx.logger.info(`[WAIT] ${fileType} is already valid. Waiting for partner response.`);
-            ctx.agent.tell(`WAITING: You have already filled the ${fileType}.\nWaiting for the ${role === 'ENGINEER' ? 'Architect' : 'Engineer'}.`);
-            return 'STOP';
+            isValid = true;
         } catch (e) {
-            // Validation failed, proceed to prompt.
+            // Validation failed
+        }
+
+        // AUTO-SUBMIT MODE
+        if (ctx.args.submit) {
+            if (isValid) {
+                ctx.logger.info(`[SUBMIT] ${fileType} submitted successfully.`);
+                return 'CONTINUE';
+            } else {
+                ctx.logger.error(`[ERROR] Cannot submit ${fileType}: Validation failed.`);
+                process.exit(1);
+            }
+        }
+
+        // If not submitting, and it's valid, we are waiting for user to run submit
+        if (isValid) {
+            ctx.logger.info(`[WAIT] ${fileType} is valid. Waiting for explicit submission.`);
+
+            ctx.agent.tell(`
+STATUS: ${fileType} is VALID.
+ACTION: Run this command to submit and proceed:
+
+> relay ${role.toLowerCase()} ${ctx.args.feature} pulse --submit
+`);
+            return 'STOP'; // Exit process, wait for user command
         }
 
         // Build context-aware prompt for auto-mode
+        // HARDENED PROMPT - NO FLUFF
         let prompt = `
-# RELAY PROTOCOL MESSAGE
+###############################################################################
+                       🚀 ACTION REQUIRED: ${role}
+###############################################################################
 
-Role: ${role}
-Action: Fill in the ${fileType}
-File: ${filePath}
+1. EDIT the file below (It has been pre-created/filled):
+   👉 ${filePath}
 
-[INFO] The file has been pre-filled with the required headers.
-       DO NOT remove the headers. Fill in the sections.
 `;
 
         // Inject current task if available (for engineer)
         if (ctx.currentTask && role === 'ENGINEER') {
             prompt += `
-───────────────────────────────────────────────────────────────────────────────
-                              CURRENT TASK
-───────────────────────────────────────────────────────────────────────────────
-
-File: ${ctx.currentTask.path}
-
+2. IMPLEMENT this Task:
+   File: ${ctx.currentTask.path}
+   -------------------------------------------------------
 ${ctx.currentTask.content}
-
-───────────────────────────────────────────────────────────────────────────────
+   -------------------------------------------------------
 `;
         }
 
         // Inject task reference for architect
         if (ctx.currentTask && role === 'ARCHITECT') {
             prompt += `
-## REVIEW CONTEXT: TASK ${ctx.currentTask.id}
-
-Task: ${ctx.currentTask.title}
-File: ${ctx.currentTask.filename}
-
-### REQUIREMENTS
+2. REVIEW Engineer's Report (in file above) against Task ${ctx.currentTask.id}:
+   Task File: ${ctx.currentTask.filename}
+   -------------------------------------------------------
 ${ctx.currentTask.content}
-
-Review the engineer's report against this task's acceptance criteria.
-`;
-        }
-
-        // Inject Reinforcement Points (Hardening)
-        if (role === 'ARCHITECT') {
-            prompt += `
-## IMPORTANT REMINDERS
-1. TRUST NOTHING. Assume the Engineer's code is broken.
-2. VERIFY EVERYTHING. Don't just read it; prove it works.
-3. ZERO TOLERANCE. If you find a single flaw, REJECT. Do not "fix it later".
-4. YOU ARE THE GATEKEEPER. Bad code results in mission failure.
-`;
-        } else if (role === 'ENGINEER') {
-            prompt += `
-## IMPORTANT REMINDERS
-1. OBEY THE DIRECTIVE. Do not improvise.
-2. VERIFY YOUR WORK. Unverified code is broken code.
-3. REPORT REALITY. If it fails, report FAILED. Do not lie.
+   -------------------------------------------------------
 `;
         }
 
         prompt += `
-## FINAL STEP
+3. VERIFY your work.
+   - If Architect: Ensure code is flawless. REJECT if any doubt.
+   - If Engineer: Ensure logic works. NO GUESSING.
 
-When you have filled the file, you MUST run this command to submit:
+4. SUBMIT when ready:
+   
+   > relay ${role.toLowerCase()} ${ctx.args.feature} pulse --submit
 
-> relay ${role.toLowerCase()} ${ctx.args.feature} pulse
-
-If you do not run this, your work will be discarded.
+###############################################################################
 `;
 
         ctx.agent.tell(prompt);
@@ -390,4 +426,3 @@ If you do not run this, your work will be discarded.
  * Prompt Architect to write directive (legacy compatibility)
  */
 export const writeDirective = () => promptWrite('directiveFile');
-

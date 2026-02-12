@@ -2,6 +2,7 @@ import { RelayLogger } from './logger';
 import { RelayAgent } from './agent';
 import { RelayState } from './state';
 import { FeatureState, TaskFile } from './feature';
+import { LockManager } from './lock';
 
 export interface RelayContext {
     id: string; // Session ID
@@ -13,7 +14,11 @@ export interface RelayContext {
     agent: RelayAgent;
 
     // Arguments passed to the CLI
-    args: Record<string, any>;
+    args: {
+        feature: string;
+        submit?: boolean;
+        [key: string]: any;
+    };
 
     // File paths for coordination
     paths: {
@@ -28,5 +33,6 @@ export interface RelayContext {
 
     // Feature context
     featureState?: FeatureState;
+    lock?: LockManager;
 }
 

@@ -306,7 +306,8 @@ program
 program
     .command('architect [feature] [pulse]')
     .description('Run architect agent')
-    .action(async (featureArg?: string, pulseArg?: string) => {
+    .option('--submit', 'Submit the directive (advance state)')
+    .action(async (featureArg?: string, pulseArg?: string, options?: { submit?: boolean }) => {
         const projectRoot = requireRelayRoot();
         const features = await listFeatures(projectRoot);
 
@@ -447,15 +448,19 @@ program
                 memory,
                 logger: new ConsoleLogger(),
                 agent: new ConsoleRelayAgent(new ConsoleLogger(), 'architect'),
-                args: { feature: featureName },
+                args: {
+                    feature: featureName!,
+                    submit: options?.submit
+                },
                 paths: {
                     workDir: featureDir,
-                    directiveFile: exchangePath, // Might be empty if no task
+                    directiveFile: exchangePath || '',
                     reportFile: reportPath || ''
                 },
                 currentTask: currentTask || undefined,
                 plan: feature.plan || '',
-                featureState: memory
+                featureState: memory,
+                lock // Pass lock for yielding
             };
 
             // Mark system prompt as run so it skips in pipeline
@@ -485,7 +490,8 @@ program
 program
     .command('engineer [feature] [pulse]')
     .description('Run engineer agent')
-    .action(async (featureArg?: string, pulseArg?: string) => {
+    .option('--submit', 'Submit the report (advance state)')
+    .action(async (featureArg?: string, pulseArg?: string, options?: { submit?: boolean }) => {
         const projectRoot = requireRelayRoot();
         const features = await listFeatures(projectRoot);
 
@@ -628,15 +634,19 @@ program
                 memory,
                 logger: new ConsoleLogger(),
                 agent: new ConsoleRelayAgent(new ConsoleLogger(), 'engineer'),
-                args: { feature: featureName },
+                args: {
+                    feature: featureName!,
+                    submit: options?.submit
+                },
                 paths: {
                     workDir: featureDir,
-                    directiveFile: targetDirectivePath!,
-                    reportFile: reportPath
+                    directiveFile: targetDirectivePath || '',
+                    reportFile: reportPath || ''
                 },
                 currentTask: task, // No "as any"!
                 plan: feature.plan || '',
-                featureState: memory
+                featureState: memory,
+                lock // Pass lock for yielding
             };
 
             // Mark system prompt as run
