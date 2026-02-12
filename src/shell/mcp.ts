@@ -32,93 +32,64 @@ async function main() {
     });
 
     // 3. Register Resources
-    // relay://context/{role} -> Returns State + Instructions + Last Content
-    server.resource(
-        'context',
-        'relay://context/{role}',
-        async (uri) => {
-            // Manual parsing for role from URI path
-            // URI is like relay://context/architect
-            const url = new URL(uri.href);
-            const parts = url.pathname.split('/');
-            // pathname might be /architect or //context/architect depending on parsing
-            // Let's grab the last segment
-            const role = parts[parts.length - 1] as Role;
+    const ROLES = ['architect', 'engineer'] as const;
 
-            if (!['architect', 'engineer'].includes(role)) {
-                throw new Error('Invalid role. Use architect or engineer.');
-            }
+    for (const role of ROLES) {
+        // Context Resource
+        server.resource(
+            `context-${role}`,
+            `relay://context/${role}`,
+            async (uri) => {
+                const state = await store.read();
+                const lastContent = await exchange.getLatestContent(state);
+                const instructions = getInstructionsForRole(state, role);
 
-            const state = await store.read();
-            const lastContent = await exchange.getLatestContent(state);
-            const instructions = getInstructionsForRole(state, role);
+                const contextView = {
+                    role,
+                    state,
+                    instructions,
+                    lastExchangeContent: lastContent
+                };
 
-            const contextView = {
-                role,
-                state,
-                instructions,
-                // Content of the *other* agent's last turn (Directive or Report) logic is inside getLatestContent
-                lastExchangeContent: lastContent
-            };
-
-            return {
-                contents: [{
-                    uri: uri.href,
-                    text: JSON.stringify(contextView, null, 2),
-                    mimeType: 'application/json',
-                }],
-            };
-        }
-    );
-
-    // Resource: Prompts
-    // relay://prompts/{role}
-    server.resource(
-        'prompts',
-        'relay://prompts/{role}',
-        async (uri) => {
-            const url = new URL(uri.href);
-            const parts = url.pathname.split('/');
-            const role = parts[parts.length - 1];
-
-            if (!['architect', 'engineer'].includes(role)) {
-                throw new Error(`Invalid role for prompts: ${role}`);
-            }
-
-            // Ideally prompts are in packageRoot/prompts/mcp/
-            // We assume we are running from dist/shell/mcp.js or src/shell/mcp.ts
-            // So go up 2 levels -> src/ -> then up to root -> then prompts/mcp
-            // Or if in dist: dist/shell -> dist -> root
-
-            // Robust way: find package.json? Or just assume standard layout.
-            // Let's try to resolve relative to __dirname
-            const packageRoot = path.resolve(__dirname, '..', '..');
-            // In src: src/shell/../../ -> root
-            // In dist: dist/shell/../../ -> root
-
-            const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
-
-            if (await fs.pathExists(promptPath)) {
-                const content = await fs.readFile(promptPath, 'utf-8');
                 return {
                     contents: [{
                         uri: uri.href,
-                        text: content,
-                        mimeType: 'text/plain',
-                    }],
-                };
-            } else {
-                // Fallback
-                return {
-                    contents: [{
-                        uri: uri.href,
-                        text: `System Prompt not found at ${promptPath}. You are the ${role}.`,
-                        mimeType: 'text/plain',
+                        text: JSON.stringify(contextView, null, 2),
+                        mimeType: 'application/json',
                     }],
                 };
             }
-        }
-    );
+        );
+
+        // Prompts Resource
+        server.resource(
+            `prompt-${role}`,
+            `relay://prompts/${role}`,
+            async (uri) => {
+                const packageRoot = path.resolve(__dirname, '..', '..');
+                const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
+
+                if (await fs.pathExists(promptPath)) {
+                    const content = await fs.readFile(promptPath, 'utf-8');
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            text: content,
+                            mimeType: 'text/plain',
+                        }],
+                    };
+                } else {
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            text: `System Prompt not found for ${role}.`,
+                            mimeType: 'text/plain',
+                        }],
+                    };
+                }
+            }
+        );
+    }
 
     // 4. Register Tools
 
