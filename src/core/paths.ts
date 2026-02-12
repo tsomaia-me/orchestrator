@@ -9,8 +9,8 @@ import path from 'path';
 /** V01: Reject taskIds that could cause path traversal. Whitelist: alphanumeric, hyphen, underscore. */
 const TASK_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
-/** V04: Max slug length to keep filename under 255 chars. taskId(36)+iter(3)+author(9)+suffix(4) ≈ 55. */
-const MAX_SLUG_LEN = 180;
+/** V04/V-STAT-01: Max slug length to keep filename under 255 chars. taskId(64)+iter(3)+author(9)+suffix(4)=83, so slug≤172. */
+const MAX_SLUG_LEN = 172;
 
 /** V-03: Max taskId length to keep filename under 255 chars. */
 const MAX_TASK_ID_LEN = 64;

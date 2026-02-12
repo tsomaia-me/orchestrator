@@ -16,7 +16,9 @@ export interface RelayState {
     readonly status: PulseStatus;
     readonly activeTaskId: string | null;
     readonly activeTaskTitle: string | null;
-    /** Iteration counter. 1-based. V07: Incremented on every SUBMIT_REPORT (engineer turn). Monotonic, independent of status. */
+    /** Iteration counter. 1-based. V07/V-INV-05: Incremented on SUBMIT_REPORT (engineer turn).
+     * Files: {taskId}-{001}-architect, {taskId}-{002}-engineer, {taskId}-{002}-architect, ...
+     * Iteration = report count; architect/engineer of same turn may differ by index. */
     readonly iteration: number;
     /** Who performed the last significant action? */
     readonly lastActionBy: Role | null;

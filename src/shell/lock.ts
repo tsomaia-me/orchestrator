@@ -2,7 +2,10 @@
  * SHELL: Lock Manager
  * Uses proper-lockfile for PID-based ownership and safe stale lock handling.
  * V02: Returns release function as closure to caller — one lock, one owner.
- * No instance-state dependency; prevents concurrent acquire from overwriting releaseFn.
+ * V-CONC-03: Lock mtime is refreshed every 10s (update option). Long-running blocking
+ * work (sync I/O, CPU-bound) inside a lock scope is NOT supported — if the event loop
+ * is blocked for 60+ seconds, the lock may be considered stale and another process
+ * can acquire it.
  */
 
 import lockfile from 'proper-lockfile';
@@ -33,7 +36,7 @@ export class LockManager {
         for (let i = 0; i < retries; i++) {
             try {
                 const releaseFn = await lockfile.lock(this.filePath, {
-                    stale: 60 * 1000,
+                    stale: 60 * 1000, // V-CONC-03: refreshed via update; blocking >60s may allow theft
                     update: 10 * 1000,
                     retries: { retries: 0 },
                 });

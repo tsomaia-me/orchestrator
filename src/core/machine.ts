@@ -68,8 +68,8 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 ? 'waiting_for_architect' // Architect reviews completion
                 : 'waiting_for_architect'; // Architect reviews failure
 
-            // V07: Monotonic iteration — increment on every SUBMIT_REPORT (engineer turn).
-            // Decouples iteration from status strings.
+            // V07/V-INV-05: Monotonic iteration on SUBMIT_REPORT. Iteration = report count.
+            // Exchange files: 001-architect, 002-engineer, 002-architect, 003-engineer (turn-based index differs).
             return {
                 ...state,
                 status: nextStatus,

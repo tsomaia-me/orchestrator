@@ -42,25 +42,36 @@ async function main() {
             `context-${role}`,
             `relay://context/${role}`,
             async (uri) => {
-                const { state, lastExchangeContent } = await store.readContext();
-                const instructions = getInstructionsForRole(state, role);
+                try {
+                    const { state, lastExchangeContent } = await store.readContext();
+                    const instructions = getInstructionsForRole(state, role);
 
-                const contextView = {
-                    role,
-                    state,
-                    instructions,
-                    lastExchangeContent
-                };
+                    const contextView = {
+                        role,
+                        state,
+                        instructions,
+                        lastExchangeContent
+                    };
 
-                // Debug log
-                console.error(`Serving context for ${role}: ${state.status}`);
-                return {
-                    contents: [{
-                        uri: uri.href,
-                        text: JSON.stringify(contextView, null, 2),
-                        mimeType: 'application/json',
-                    }],
-                };
+                    console.error(`Serving context for ${role}: ${state.status}`);
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            text: JSON.stringify(contextView, null, 2),
+                            mimeType: 'application/json',
+                        }],
+                    };
+                } catch (err: any) {
+                    console.error(`Context resource error for ${role}:`, err);
+                    const errorView = { error: String(err?.message ?? err), role };
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            text: JSON.stringify(errorView, null, 2),
+                            mimeType: 'application/json',
+                        }],
+                    };
+                }
             }
         );
 
@@ -69,33 +80,44 @@ async function main() {
             `prompt-${role}`,
             `relay://prompts/${role}`,
             async (uri) => {
-                // V-06: Robust package root resolution for dist, symlinked, or bundled installs
-                let packageRoot = path.resolve(__dirname, '..', '..');
-                if (!(await fs.pathExists(path.join(packageRoot, 'prompts', 'mcp')))) {
-                    try {
-                        packageRoot = path.dirname(
-                            require.resolve('orchestrator-relay/package.json', { paths: [process.cwd(), __dirname] })
-                        );
-                    } catch {
-                        packageRoot = process.cwd();
+                try {
+                    // V-06: Robust package root resolution for dist, symlinked, or bundled installs
+                    let packageRoot = path.resolve(__dirname, '..', '..');
+                    if (!(await fs.pathExists(path.join(packageRoot, 'prompts', 'mcp')))) {
+                        try {
+                            packageRoot = path.dirname(
+                                require.resolve('orchestrator-relay/package.json', { paths: [process.cwd(), __dirname] })
+                            );
+                        } catch {
+                            packageRoot = process.cwd();
+                        }
                     }
-                }
-                const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
+                    const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
 
-                if (await fs.pathExists(promptPath)) {
-                    const content = await fs.readFile(promptPath, 'utf-8');
+                    if (await fs.pathExists(promptPath)) {
+                        const content = await fs.readFile(promptPath, 'utf-8');
+                        return {
+                            contents: [{
+                                uri: uri.href,
+                                text: content,
+                                mimeType: 'text/plain',
+                            }],
+                        };
+                    } else {
+                        return {
+                            contents: [{
+                                uri: uri.href,
+                                text: `System Prompt not found for ${role}.`,
+                                mimeType: 'text/plain',
+                            }],
+                        };
+                    }
+                } catch (err: any) {
+                    console.error(`Prompts resource error for ${role}:`, err);
                     return {
                         contents: [{
                             uri: uri.href,
-                            text: content,
-                            mimeType: 'text/plain',
-                        }],
-                    };
-                } else {
-                    return {
-                        contents: [{
-                            uri: uri.href,
-                            text: `System Prompt not found for ${role}.`,
+                            text: `System Prompt failed to load: ${err?.message ?? err}`,
                             mimeType: 'text/plain',
                         }],
                     };

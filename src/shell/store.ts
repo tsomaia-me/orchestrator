@@ -61,8 +61,34 @@ export class Store {
                 await fs.writeJson(tmpPath, INITIAL_STATE, { spaces: 2 });
                 await fs.rename(tmpPath, this.statePath);
             }
+            await this.reconcileOrphanExchanges();
         } finally {
             await release();
+        }
+    }
+
+    /**
+     * V-STAT-02: Remove orphan exchange files (zombies from failed state write after exchange).
+     * Orphan = file for activeTaskId with iteration > state.iteration.
+     */
+    private async reconcileOrphanExchanges(): Promise<void> {
+        const state = await this.read();
+        if (!state.activeTaskId) return;
+
+        const exchangesDir = path.join(this.rootDir, '.relay', 'exchanges');
+        await fs.ensureDir(exchangesDir);
+        const files = await fs.readdir(exchangesDir);
+
+        const pattern = /^(.+)-(\d{3})-(architect|engineer)-.+\.md$/;
+        for (const name of files) {
+            const m = name.match(pattern);
+            if (!m) continue;
+            const [, taskId, iterStr, author] = m;
+            if (taskId !== state.activeTaskId) continue;
+            const iter = parseInt(iterStr, 10);
+            if (iter > state.iteration) {
+                await fs.remove(path.join(exchangesDir, name)).catch(() => {});
+            }
         }
     }
 
@@ -108,7 +134,8 @@ export class Store {
 
     /**
      * V04/V06: Update + exchange write within lock. V01: Write exchange first, then state.
-     * No rollback — if exchange fails we never touch state; if state fails we may have orphan exchange.
+     * V-STAT-02: Exchange-first avoids rollback complexity. Tradeoff: if state write fails,
+     * orphan "zombie" exchange may remain. reconcileOrphanExchanges() cleans these on init.
      */
     async updateWithExchange(
         updater: (state: RelayState) => RelayState,
