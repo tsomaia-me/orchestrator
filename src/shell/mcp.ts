@@ -89,7 +89,7 @@ async function main() {
                                 require.resolve('orchestrator-relay/package.json', { paths: [process.cwd(), __dirname] })
                             );
                         } catch {
-                            packageRoot = process.cwd();
+                            // Finding 5: Do not fallback to process.cwd(); keep packageRoot to return "System Prompt not found."
                         }
                     }
                     const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);

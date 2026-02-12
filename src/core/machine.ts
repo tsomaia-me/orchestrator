@@ -35,8 +35,8 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }
 
-            // V07: Iteration is monotonic, incremented only on SUBMIT_REPORT. No status-based logic.
-            const nextIteration = state.iteration;
+            // Audit 8f013b87 Finding 3: Turn-based iteration — increment on architect response to report
+            const nextIteration = state.status === 'waiting_for_architect' ? state.iteration + 1 : state.iteration;
 
             // If approved, complete the task
             if (action.decision === 'APPROVE') {
@@ -68,12 +68,11 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 ? 'waiting_for_architect' // Architect reviews completion
                 : 'waiting_for_architect'; // Architect reviews failure
 
-            // V07/V-INV-05: Monotonic iteration on SUBMIT_REPORT. Iteration = report count.
-            // Exchange files: 001-architect, 002-engineer, 002-architect, 003-engineer (turn-based index differs).
+            // Audit 8f013b87 Finding 3: Report does NOT increment; architect response does. Exchange: 001-arch, 001-eng, 002-arch, 002-eng.
             return {
                 ...state,
                 status: nextStatus,
-                iteration: state.iteration + 1,
+                iteration: state.iteration,
                 lastActionBy: 'engineer',
                 updatedAt: now,
             };

@@ -143,10 +143,13 @@ export class Store {
     ): Promise<RelayState> {
         const release = await this.lock.acquire();
         try {
+            await this.reconcileOrphanExchanges();
             const state = await this.read();
             const newState = updater(state);
             // V01: Exchange first — if it throws, state never changes; no rollback needed
             await exchangeWrite(newState);
+            // Finding 1: Yield to event loop between exchange and state write
+            await new Promise((r) => setImmediate(r));
             // Then state (tmp+rename)
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
