@@ -11,6 +11,7 @@
     "dev": "tsx src/shell/mcp.ts",
     "start": "node dist/shell/mcp.js",
     "legacy-cli": "tsx src/legacy/cli.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/shell/mcp.js",
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
