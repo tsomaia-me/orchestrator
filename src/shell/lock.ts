@@ -30,10 +30,9 @@ export class LockManager {
         // proper-lockfile requires the file to exist. Store.init() creates state.json before first use.
 
         const start = Date.now();
-        const retries = Math.max(1, Math.ceil(timeoutMs / 50));
         const baseMs = 50;
 
-        for (let i = 0; i < retries; i++) {
+        for (let i = 0; ; i++) {
             try {
                 const releaseFn = await lockfile.lock(this.filePath, {
                     stale: 30 * 1000,
@@ -47,13 +46,21 @@ export class LockManager {
                         'Relay is not initialized. Run from a project with .relay/ or ensure init has completed.'
                     );
                 }
-                if (timeoutMs > 0 && Date.now() - start >= timeoutMs) {
+                const elapsed = Date.now() - start;
+                if (timeoutMs > 0 && elapsed >= timeoutMs) {
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }
-                const delay = baseMs * Math.pow(2, i) + Math.random() * baseMs;
-                await new Promise((r) => setTimeout(r, Math.min(delay, 2000)));
+                const remaining = timeoutMs - elapsed;
+                if (remaining <= 0) {
+                    throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
+                }
+                const delay = Math.min(
+                    remaining,
+                    baseMs * Math.pow(2, i) + Math.random() * baseMs,
+                    2000
+                );
+                await new Promise((r) => setTimeout(r, delay));
             }
         }
-        throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
     }
 }

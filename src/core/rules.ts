@@ -10,9 +10,8 @@ import { PulseStatus } from './state';
 export function validateAction(state: RelayState, action: Action): void {
     switch (action.type) {
         case 'START_TASK':
+            // V-STATE-01: Disallow double start — prevents orphan exchanges from task re-entry
             if (state.status !== 'idle' && state.status !== 'completed') {
-                // Allow restarting/re-planning if already in planning? Maybe.
-                if (state.status === 'planning') return;
                 throw new Error(`Cannot start task in state: ${state.status}`);
             }
             break;

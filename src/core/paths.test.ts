@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { validateTaskId, getExchangeFilename } from './paths';
+import { validateTaskId, getExchangeFilename, getExchangePath } from './paths';
 
 describe('validateTaskId (V01)', () => {
     it('accepts valid taskIds', () => {
@@ -47,5 +47,17 @@ describe('getExchangeFilename (V04)', () => {
         const longTitle = 'a'.repeat(400);
         const filename = getExchangeFilename('abc-123-def', longTitle, 1, 'architect');
         assert.ok(filename.length <= 255, `filename length ${filename.length} exceeds 255`);
+    });
+});
+
+describe('getExchangePath (V-PATH-01)', () => {
+    it('throws when full path exceeds platform max', () => {
+        // Create root that yields full path > MAX_PATH_LEN (259 Windows, 4095 Unix)
+        const pad = process.platform === 'win32' ? 200 : 4100;
+        const longRoot = '/x/' + 'a'.repeat(pad);
+        assert.throws(
+            () => getExchangePath(longRoot, 'task-1', 'Title', 1, 'architect'),
+            /exceeds maximum length/
+        );
     });
 });

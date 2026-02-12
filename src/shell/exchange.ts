@@ -28,10 +28,10 @@ export class ExchangeManager {
     ): Promise<string> {
         const filePath = getExchangePath(this.rootDir, taskId, taskTitle, iteration, author);
         await fs.ensureDir(path.dirname(filePath));
-        // V03: Atomic write — write to .tmp then rename
+        // V03/V-CONC-02: Atomic write — write to .tmp then move (fs.move overwrite for Windows)
         const tmpPath = filePath + '.tmp';
         await fs.writeFile(tmpPath, content, 'utf-8');
-        await fs.rename(tmpPath, filePath);
+        await fs.move(tmpPath, filePath, { overwrite: true });
         return filePath;
     }
 

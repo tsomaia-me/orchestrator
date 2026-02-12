@@ -35,8 +35,8 @@ export function reducer(state: RelayState = INITIAL_STATE, action: Action): Rela
                 throw new Error(`Task ID mismatch: Expected ${state.activeTaskId}, got ${action.taskId}`);
             }
 
-            // Audit 8f013b87 Finding 3: Turn-based iteration — increment on architect response to report
-            const nextIteration = state.status === 'waiting_for_architect' ? state.iteration + 1 : state.iteration;
+            // V-STATE-02: Increment when architect responds to engineer report (lastActionBy check is resilient to new states)
+            const nextIteration = state.lastActionBy === 'engineer' ? state.iteration + 1 : state.iteration;
 
             // If approved, complete the task
             if (action.decision === 'APPROVE') {

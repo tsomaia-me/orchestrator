@@ -59,9 +59,9 @@ export class Store {
             if (!(await fs.pathExists(this.statePath))) {
                 const tmpPath = this.statePath + '.tmp';
                 await fs.writeJson(tmpPath, INITIAL_STATE, { spaces: 2 });
-                await fs.rename(tmpPath, this.statePath);
+                await fs.move(tmpPath, this.statePath, { overwrite: true });
             }
-            await this.reconcileOrphanExchanges();
+            await this.reconcileOrphanExchanges(true);
         } finally {
             await release();
         }
@@ -70,9 +70,11 @@ export class Store {
     /**
      * V-STAT-02: Remove orphan exchange files (zombies from failed state write after exchange).
      * Orphan = file for activeTaskId with iteration > state.iteration.
+     * V-STATE-01: Also remove files for taskIds !== activeTaskId (aborted/replaced tasks).
+     * @param skipTmpCleanup - V-CORRUPT-01: When true, read() will NOT remove .tmp. Use when caller does NOT hold state lock (e.g. init). UNSAFE otherwise.
      */
-    private async reconcileOrphanExchanges(): Promise<void> {
-        const state = await this.read();
+    private async reconcileOrphanExchanges(skipTmpCleanup = false): Promise<void> {
+        const state = await this.read(skipTmpCleanup);
         if (!state.activeTaskId) return;
 
         const exchangesDir = path.join(this.rootDir, '.relay', 'exchanges');
@@ -83,10 +85,11 @@ export class Store {
         for (const name of files) {
             const m = name.match(pattern);
             if (!m) continue;
-            const [, taskId, iterStr, author] = m;
-            if (taskId !== state.activeTaskId) continue;
+            const [, taskId, iterStr] = m;
             const iter = parseInt(iterStr, 10);
-            if (iter > state.iteration) {
+            const isOrphanIter = taskId === state.activeTaskId && iter > state.iteration;
+            const isOrphanTask = taskId !== state.activeTaskId;
+            if (isOrphanIter || isOrphanTask) {
                 await fs.remove(path.join(exchangesDir, name)).catch(() => {});
             }
         }
@@ -103,7 +106,7 @@ export class Store {
             // V03: Atomic write — write to .tmp then rename
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
-            await fs.rename(tmpPath, this.statePath);
+            await fs.move(tmpPath, this.statePath, { overwrite: true });
             return newState;
         } finally {
             await release();
@@ -125,7 +128,7 @@ export class Store {
             await sideEffect(newState);
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
-            await fs.rename(tmpPath, this.statePath);
+            await fs.move(tmpPath, this.statePath, { overwrite: true });
             return newState;
         } finally {
             await release();
@@ -153,24 +156,28 @@ export class Store {
             // Then state (tmp+rename)
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
-            await fs.rename(tmpPath, this.statePath);
+            await fs.move(tmpPath, this.statePath, { overwrite: true });
             return newState;
         } finally {
             await release();
         }
     }
 
-    private async read(): Promise<RelayState> {
+    /**
+     * Read state from disk. V-CORRUPT-01: skipTmpCleanup MUST be true when caller does NOT hold state lock.
+     * When false (default), removes orphan .tmp — safe ONLY when caller holds state lock.
+     */
+    private async read(skipTmpCleanup = false): Promise<RelayState> {
         if (await fs.pathExists(this.statePath)) {
-            // V05: Remove orphan .tmp from crashed write (state.json exists but .tmp left behind)
-            const tmpPath = this.statePath + '.tmp';
-            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath).catch(() => {});
+            if (!skipTmpCleanup) {
+                const tmpPath = this.statePath + '.tmp';
+                if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath).catch(() => {});
+            }
             return await fs.readJson(this.statePath);
         }
-        // V03: Orphaned .tmp from crashed write — treat as failed, remove
-        const tmpPath = this.statePath + '.tmp';
-        if (await fs.pathExists(tmpPath)) {
-            await fs.remove(tmpPath);
+        if (!skipTmpCleanup) {
+            const tmpPath = this.statePath + '.tmp';
+            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
         }
         return INITIAL_STATE;
     }

@@ -15,6 +15,9 @@ const MAX_SLUG_LEN = 172;
 /** V-03: Max taskId length to keep filename under 255 chars. */
 const MAX_TASK_ID_LEN = 64;
 
+/** V-PATH-01: Max total path length. Windows default MAX_PATH=260; use 259 for safety. */
+const MAX_PATH_LEN = process.platform === 'win32' ? 259 : 4095;
+
 export function validateTaskId(id: string): void {
     if (!TASK_ID_REGEX.test(id)) {
         throw new Error(`Invalid taskId: must match ^[a-zA-Z0-9_-]+$`);
@@ -56,10 +59,16 @@ export function getExchangePath(
     iteration: number,
     author: 'architect' | 'engineer'
 ): string {
-    return path.join(
+    const fullPath = path.join(
         rootDir,
         '.relay',
         'exchanges',
         getExchangeFilename(taskId, taskTitle, iteration, author)
     );
+    if (fullPath.length > MAX_PATH_LEN) {
+        throw new Error(
+            `Exchange path exceeds maximum length (${MAX_PATH_LEN}): ${fullPath.length} chars. Use a shorter root directory or task title.`
+        );
+    }
+    return fullPath;
 }

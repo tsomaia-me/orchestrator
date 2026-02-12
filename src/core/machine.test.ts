@@ -89,6 +89,27 @@ describe('Relay State Machine', () => {
         assert.strictEqual(nextState.iteration, 2);
     });
 
+    it('should reject START_TASK when already in planning (V-STATE-01)', () => {
+        const planningState = reducer(INITIAL_STATE, {
+            type: 'START_TASK',
+            taskId: '123',
+            taskTitle: 'First Task',
+            timestamp: 1000
+        });
+        assert.strictEqual(planningState.status, 'planning');
+
+        assert.throws(
+            () =>
+                reducer(planningState as any, {
+                    type: 'START_TASK',
+                    taskId: '456',
+                    taskTitle: 'Second Task',
+                    timestamp: 2000
+                }),
+            /Cannot start task in state: planning/
+        );
+    });
+
     it('should complete task on APPROVE directive', () => {
         const state = {
             ...INITIAL_STATE,
