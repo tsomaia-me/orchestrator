@@ -67,15 +67,26 @@ export class Store {
         }
     }
 
+    /** Audit 714ec505: Remove orphan .tmp from crashed write. Call only when holding state lock. */
+    private async cleanupOrphanTmp(): Promise<void> {
+        if (await fs.pathExists(this.statePath)) {
+            const tmpPath = this.statePath + '.tmp';
+            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath).catch(() => {});
+        } else {
+            const tmpPath = this.statePath + '.tmp';
+            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
+        }
+    }
+
     /**
      * V-STAT-02: Remove orphan exchange files (zombies from failed state write after exchange).
      * Orphan = file for activeTaskId with iteration > state.iteration.
      * V-STATE-01: Also remove files for taskIds !== activeTaskId (aborted/replaced tasks).
-     * @param skipTmpCleanup - V-CORRUPT-01: When true, read() will NOT remove .tmp. Use when caller does NOT hold state lock (e.g. init). UNSAFE otherwise.
+     * Returns state for caller reuse (Audit 714ec505: eliminates double read).
      */
-    private async reconcileOrphanExchanges(skipTmpCleanup = false): Promise<void> {
-        const state = await this.read(skipTmpCleanup);
-        if (!state.activeTaskId) return;
+    private async reconcileOrphanExchanges(): Promise<RelayState> {
+        const state = await this.read();
+        if (!state.activeTaskId) return state;
 
         const exchangesDir = path.join(this.rootDir, '.relay', 'exchanges');
         await fs.ensureDir(exchangesDir);
@@ -95,6 +106,7 @@ export class Store {
                 });
             }
         }
+        return state;
     }
 
     /**
@@ -103,6 +115,7 @@ export class Store {
     async update(updater: (state: RelayState) => RelayState): Promise<RelayState> {
         const release = await this.lock.acquire();
         try {
+            await this.cleanupOrphanTmp();
             const state = await this.read();
             const newState = updater(state);
             // V03: Atomic write — write to .tmp then rename
@@ -125,6 +138,7 @@ export class Store {
     ): Promise<RelayState> {
         const release = await this.lock.acquire();
         try {
+            await this.cleanupOrphanTmp();
             const state = await this.read();
             const newState = updater(state);
             await sideEffect(newState);
@@ -148,8 +162,8 @@ export class Store {
     ): Promise<RelayState> {
         const release = await this.lock.acquire();
         try {
-            await this.reconcileOrphanExchanges();
-            const state = await this.read();
+            await this.cleanupOrphanTmp();
+            const state = await this.reconcileOrphanExchanges();
             const newState = updater(state);
             // V01: Exchange first — if it throws, state never changes; no rollback needed
             await exchangeWrite(newState);
@@ -163,21 +177,10 @@ export class Store {
         }
     }
 
-    /**
-     * Read state from disk. V-CORRUPT-01: skipTmpCleanup MUST be true when caller does NOT hold state lock.
-     * When false (default), removes orphan .tmp — safe ONLY when caller holds state lock.
-     */
-    private async read(skipTmpCleanup = false): Promise<RelayState> {
+    /** Audit 714ec505: Pure read. No side effects. Call cleanupOrphanTmp() first when holding lock. */
+    private async read(): Promise<RelayState> {
         if (await fs.pathExists(this.statePath)) {
-            if (!skipTmpCleanup) {
-                const tmpPath = this.statePath + '.tmp';
-                if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath).catch(() => {});
-            }
             return await fs.readJson(this.statePath);
-        }
-        if (!skipTmpCleanup) {
-            const tmpPath = this.statePath + '.tmp';
-            if (await fs.pathExists(tmpPath)) await fs.remove(tmpPath);
         }
         return INITIAL_STATE;
     }

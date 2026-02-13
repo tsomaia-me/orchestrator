@@ -16,9 +16,8 @@ export interface RelayState {
     readonly status: PulseStatus;
     readonly activeTaskId: string | null;
     readonly activeTaskTitle: string | null;
-    /** Iteration counter. 1-based. V07/V-INV-05: Incremented on SUBMIT_REPORT (engineer turn).
-     * Files: {taskId}-{001}-architect, {taskId}-{002}-engineer, {taskId}-{002}-architect, ...
-     * Iteration = report count; architect/engineer of same turn may differ by index. */
+    /** Iteration counter. 1-based. V-STATE-02: Incremented on SUBMIT_DIRECTIVE when architect responds
+     * to engineer report (lastActionBy === 'engineer'). Exchange files: 001-arch, 001-eng, 002-arch, ... */
     readonly iteration: number;
     /** Who performed the last significant action? */
     readonly lastActionBy: Role | null;

@@ -183,6 +183,16 @@ async function main() {
         async (args) => {
             try {
                 validateTaskId(args.taskId);
+                const state = await store.readLocked();
+                if (state.activeTaskId !== args.taskId) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: 'text',
+                            text: `Task ${args.taskId} is not the active task. Active: ${state.activeTaskId ?? 'none'}.`
+                        }],
+                    };
+                }
                 const action = {
                     type: 'SUBMIT_DIRECTIVE',
                     taskId: args.taskId,
@@ -227,6 +237,16 @@ async function main() {
         async (args) => {
             try {
                 validateTaskId(args.taskId);
+                const state = await store.readLocked();
+                if (state.activeTaskId !== args.taskId) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: 'text',
+                            text: `Task ${args.taskId} is not the active task. Active: ${state.activeTaskId ?? 'none'}.`
+                        }],
+                    };
+                }
                 const action = {
                     type: 'SUBMIT_REPORT',
                     taskId: args.taskId,

@@ -12,6 +12,13 @@ import lockfile from 'proper-lockfile';
 import fs from 'fs-extra';
 import path from 'path';
 
+/** Audit 714ec505: Retry backoff base (ms). */
+const DEFAULT_LOCK_BASE_MS = 50;
+/** Audit 714ec505: Max delay between retries (ms). */
+const DEFAULT_LOCK_MAX_DELAY_MS = 2000;
+/** Unrecoverable errors: fail fast instead of retrying. */
+const FATAL_LOCK_CODES = ['EACCES', 'EPERM', 'EROFS', 'ENOTDIR', 'ENAMETOOLONG'];
+
 export type ReleaseFn = () => Promise<void>;
 
 export class LockManager {
@@ -30,7 +37,6 @@ export class LockManager {
         // proper-lockfile requires the file to exist. Store.init() creates state.json before first use.
 
         const start = Date.now();
-        const baseMs = 50;
 
         for (let i = 0; ; i++) {
             try {
@@ -41,6 +47,11 @@ export class LockManager {
                 });
                 return releaseFn;
             } catch (err: any) {
+                if (err?.code && FATAL_LOCK_CODES.includes(err.code)) {
+                    throw new Error(
+                        `Cannot acquire lock: ${err.code}. Check .relay permissions and path.`
+                    );
+                }
                 const elapsed = Date.now() - start;
                 if (timeoutMs > 0 && elapsed >= timeoutMs) {
                     if (err?.code === 'ENOENT') {
@@ -54,11 +65,10 @@ export class LockManager {
                 if (remaining <= 0) {
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }
-                // ENOENT: retry in case init() is creating state.json (waitable bootstrap)
                 const delay = Math.min(
                     remaining,
-                    baseMs * Math.pow(2, i) + Math.random() * baseMs,
-                    2000
+                    DEFAULT_LOCK_BASE_MS * Math.pow(2, i) + Math.random() * DEFAULT_LOCK_BASE_MS,
+                    DEFAULT_LOCK_MAX_DELAY_MS
                 );
                 await new Promise((r) => setTimeout(r, delay));
             }
