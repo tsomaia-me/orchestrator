@@ -12,6 +12,10 @@ import { TOOLS } from '../shell/tools';
 import { RelayState } from './state';
 import packageJson from '../../package.json'; // Ensure resolveJsonModule is true
 import { readSafeFile } from './io';
+import { validateTaskId } from './paths';
+
+/** Audit b79b0667: Reject prototype pollution keys */
+const UNSAFE_INJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export class ContextBuilder {
     constructor(
@@ -21,16 +25,26 @@ export class ContextBuilder {
     ) { }
 
     async build(role: 'architect' | 'engineer', state: RelayState, model?: string): Promise<PromptContext> {
-        // 1. Task
+        // 1. Task (Audit b79b0667: validate activeTaskId, use readSafeFile)
         let task = undefined;
+        let validTaskId: string | null = null;
         if (state.activeTaskId) {
-            const taskPath = path.join(this.rootDir, '.relay', 'tasks', `${state.activeTaskId}.md`);
-            if (await fs.pathExists(taskPath)) {
+            try {
+                validateTaskId(state.activeTaskId);
+                validTaskId = state.activeTaskId;
+            } catch {
+                // Corrupted state: skip task
+            }
+        }
+        if (validTaskId) {
+            const relPath = path.join('.relay', 'tasks', `${validTaskId}.md`);
+            const content = await readSafeFile(this.rootDir, relPath);
+            if (content !== null && content !== '<<ERROR: FILE_TOO_LARGE>>') {
                 task = {
-                    id: state.activeTaskId,
+                    id: validTaskId,
                     title: state.activeTaskTitle || 'Unknown Task',
-                    path: path.relative(this.rootDir, taskPath),
-                    content: await fs.readFile(taskPath, 'utf-8')
+                    path: relPath,
+                    content
                 };
             }
         }
@@ -57,10 +71,11 @@ export class ContextBuilder {
             schema: JSON.stringify(t.schema)
         }));
 
-        // 5. Injections
-        const custom: Record<string, string> = {};
+        // 5. Injections (Audit b79b0667: Object.create(null), reject __proto__/constructor)
+        const custom = Object.create(null) as Record<string, string>;
         if (config.inject) {
             for (const [key, relPath] of Object.entries(config.inject as Record<string, string>)) {
+                if (UNSAFE_INJECT_KEYS.has(key)) continue;
                 try {
                     const content = await readSafeFile(this.rootDir, relPath);
                     if (content !== null) {

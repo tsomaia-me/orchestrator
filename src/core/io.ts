@@ -9,6 +9,16 @@ import path from 'path';
 const MAX_FILE_SIZE_BYTES = 50 * 1024; // 50KB
 
 /**
+ * Audit b79b0667: Proper containment check. realPath.startsWith(realRootDir) is broken —
+ * /home/user/relay-secrets passes when root is /home/user/relay.
+ * path.relative avoids prefix trap and handles Windows case sensitivity.
+ */
+function isPathInsideRoot(realPath: string, realRootDir: string): boolean {
+    const relative = path.relative(realRootDir, realPath);
+    return !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+/**
  * Read a file safely with path validation and size limits.
  * @param rootDir Project root directory to sandbox within
  * @param relativePath Relative path to the file
@@ -27,8 +37,8 @@ export async function readSafeFile(rootDir: string, relativePath: string): Promi
     // Resolve the actual physical path to ensure it's inside rootDir
     // This prevents symlinks inside rootDir pointing to files outside
     const realPath = await fs.realpath(safePath);
-    if (!realPath.startsWith(realRootDir)) {
-        throw new Error(`Security Violation: Symlink traversal detected. Real path ${realPath} is outside project root.`);
+    if (!isPathInsideRoot(realPath, realRootDir)) {
+        throw new Error(`Security Violation: Path traversal detected. Real path ${realPath} is outside project root.`);
     }
 
     if (!(await fs.pathExists(safePath))) {
@@ -76,8 +86,8 @@ export function readSafeFileSync(rootDir: string, relativePath: string): string 
         throw err;
     }
 
-    if (!realPath.startsWith(realRootDir)) {
-        throw new Error(`Security Violation: Symlink traversal detected. Real path ${realPath} is outside project root.`);
+    if (!isPathInsideRoot(realPath, realRootDir)) {
+        throw new Error(`Security Violation: Path traversal detected. Real path ${realPath} is outside project root.`);
     }
 
     // SECURITY: Size Limit (DoS Prevention)

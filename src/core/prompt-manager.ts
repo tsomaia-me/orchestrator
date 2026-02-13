@@ -45,7 +45,7 @@ export class PromptManager {
             // Use centralized safe sync reader
             // Round 2: Returns <<ERROR: FILE_TOO_LARGE>> if > 50KB
             const content = readSafeFileSync(this.projectRoot, relativePath);
-            if (content === null) return `[File not found: ${relativePath}]`;
+            if (content === null) return '[File not found]';
             return content;
         });
 
@@ -62,10 +62,9 @@ export class PromptManager {
 
         // Model-specific lookup
         if (model) {
-            // Round 2: Strict Model Validation
-            if (!/^[a-zA-Z0-9.-]+$/.test(model)) {
+            // Audit b79b0667: Reject .. and leading/trailing dots; strict charset
+            if (model.includes('..') || model.startsWith('.') || model.endsWith('.') || !/^[a-zA-Z0-9.-]+$/.test(model)) {
                 console.warn(`Invalid model name rejected: ${model}`);
-                // Fallback to generic, do not attempt to load unsafe path
             } else {
                 const specificName = `${role}.${model}.njk`;
                 try {
