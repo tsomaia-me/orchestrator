@@ -41,19 +41,20 @@ export class LockManager {
                 });
                 return releaseFn;
             } catch (err: any) {
-                if (err?.code === 'ENOENT') {
-                    throw new Error(
-                        'Relay is not initialized. Run from a project with .relay/ or ensure init has completed.'
-                    );
-                }
                 const elapsed = Date.now() - start;
                 if (timeoutMs > 0 && elapsed >= timeoutMs) {
+                    if (err?.code === 'ENOENT') {
+                        throw new Error(
+                            'Relay is not initialized. Run from a project with .relay/ or ensure init has completed.'
+                        );
+                    }
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }
                 const remaining = timeoutMs - elapsed;
                 if (remaining <= 0) {
                     throw new Error(`Could not acquire lock after ${timeoutMs}ms. Relay is busy.`);
                 }
+                // ENOENT: retry in case init() is creating state.json (waitable bootstrap)
                 const delay = Math.min(
                     remaining,
                     baseMs * Math.pow(2, i) + Math.random() * baseMs,

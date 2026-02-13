@@ -61,7 +61,7 @@ export class Store {
                 await fs.writeJson(tmpPath, INITIAL_STATE, { spaces: 2 });
                 await fs.move(tmpPath, this.statePath, { overwrite: true });
             }
-            await this.reconcileOrphanExchanges(true);
+            // Reconcile removed from init: state-exchange race fix. Purge runs only in updateWithExchange (holds state lock).
         } finally {
             await release();
         }
@@ -90,7 +90,9 @@ export class Store {
             const isOrphanIter = taskId === state.activeTaskId && iter > state.iteration;
             const isOrphanTask = taskId !== state.activeTaskId;
             if (isOrphanIter || isOrphanTask) {
-                await fs.remove(path.join(exchangesDir, name)).catch(() => {});
+                await fs.remove(path.join(exchangesDir, name)).catch((err: any) => {
+                    console.error('[Relay] Reconcile: failed to remove orphan', name, err?.message ?? err);
+                });
             }
         }
     }
@@ -138,7 +140,7 @@ export class Store {
     /**
      * V04/V06: Update + exchange write within lock. V01: Write exchange first, then state.
      * V-STAT-02: Exchange-first avoids rollback complexity. Tradeoff: if state write fails,
-     * orphan "zombie" exchange may remain. reconcileOrphanExchanges() cleans these on init.
+     * orphan "zombie" exchange may remain. reconcileOrphanExchanges() cleans these on next updateWithExchange.
      */
     async updateWithExchange(
         updater: (state: RelayState) => RelayState,
@@ -151,9 +153,7 @@ export class Store {
             const newState = updater(state);
             // V01: Exchange first — if it throws, state never changes; no rollback needed
             await exchangeWrite(newState);
-            // Finding 1: Yield to event loop between exchange and state write
-            await new Promise((r) => setImmediate(r));
-            // Then state (tmp+rename)
+            // Then state (tmp+rename) — no yield; keeps atomicity
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
             await fs.move(tmpPath, this.statePath, { overwrite: true });
