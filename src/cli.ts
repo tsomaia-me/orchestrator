@@ -26,6 +26,12 @@ program.command('init')
         }
     });
 
+program.command('mcp')
+    .description('Start the MCP server (stdio transport). Used by Cursor, Windsurf, Claude Desktop.')
+    .action(async () => {
+        await import('./shell/mcp.js');
+    });
+
 program.parse(process.argv);
 
 if (!process.argv.slice(2).length) {

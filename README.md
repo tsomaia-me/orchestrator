@@ -49,19 +49,29 @@ To use Relay with your AI IDE (Cursor, Windsurf) or Claude Desktop, add it to yo
 
 Add this to your MCP settings file (typically `~/.cursor/mcp.json` or similar):
 
+**Option A — Path-free (recommended, requires npm):**
 ```json
 {
   "mcpServers": {
     "relay": {
-      "command": "node",
-      "args": [
-        "/ABSOLUTE/PATH/TO/relay/dist/shell/mcp.js"
-      ]
+      "command": "npx",
+      "args": ["-y", "orchestrator-relay", "mcp"]
     }
   }
 }
 ```
 
+**Option B — Local clone:**
+```json
+{
+  "mcpServers": {
+    "relay": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/relay/dist/shell/mcp.js"]
+    }
+  }
+}
+```
 *Replace `/ABSOLUTE/PATH/TO/relay` with the actual path where you cloned the repo.*
 
 ---
