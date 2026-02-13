@@ -24,6 +24,13 @@ export interface RelayState {
     readonly updatedAt: number;
 }
 
+export interface ExchangeEntry {
+    author: Role;
+    content: string;
+    timestamp: number;
+    iteration: number;
+}
+
 /** Initial State Factory (Pure) */
 export const INITIAL_STATE: RelayState = {
     status: 'idle',

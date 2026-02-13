@@ -24,10 +24,10 @@ describe('LockManager', () => {
         const release2 = await lock.acquire(1000);
         await release2();
 
-        await fs.remove(tmpDir).catch(() => {});
+        await fs.remove(tmpDir).catch(() => { });
     });
 
-    it('should fail fast on EACCES (unrecoverable)', async function () {
+    it('should fail fast on EACCES (unrecoverable)', async function (this: any) {
         if (process.platform === 'win32') {
             this.skip();
         }
@@ -45,8 +45,8 @@ describe('LockManager', () => {
                 /Cannot acquire lock: EACCES/
             );
         } finally {
-            await fs.chmod(relayDir, 0o755).catch(() => {});
-            await fs.remove(tmpDir).catch(() => {});
+            await fs.chmod(relayDir, 0o755).catch(() => { });
+            await fs.remove(tmpDir).catch(() => { });
         }
     });
 
@@ -63,6 +63,6 @@ describe('LockManager', () => {
             /Relay is not initialized/
         );
 
-        await fs.remove(tmpDir).catch(() => {});
+        await fs.remove(tmpDir).catch(() => { });
     });
 });

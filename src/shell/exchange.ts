@@ -75,4 +75,43 @@ export class ExchangeManager {
         }
         return await fs.readFile(filePath, 'utf-8');
     }
+
+    /**
+     * Retrieve the full history of exchanges for a task.
+     * Used for context injection.
+     */
+    async getTaskHistory(taskId: string): Promise<import('../core/state').ExchangeEntry[]> {
+        const exchangeDir = path.join(this.rootDir, '.relay', 'exchanges');
+        if (!(await fs.pathExists(exchangeDir))) return [];
+
+        const files = await fs.readdir(exchangeDir);
+        const taskFiles = files.filter(f => f.startsWith(taskId));
+
+        const history: import('../core/state').ExchangeEntry[] = [];
+
+        for (const file of taskFiles) {
+            try {
+                // author is always 'architect' or 'engineer'
+                const author = file.includes('-architect-') ? 'architect' :
+                    file.includes('-engineer-') ? 'engineer' : undefined;
+
+                if (!author) continue;
+
+                const content = await fs.readFile(path.join(exchangeDir, file), 'utf-8');
+                const stat = await fs.stat(path.join(exchangeDir, file));
+
+                history.push({
+                    author,
+                    content,
+                    timestamp: stat.mtimeMs, // Approx timestamp
+                    iteration: 0
+                });
+            } catch (err) {
+                console.warn(`Failed to read exchange file ${file}:`, err);
+            }
+        }
+
+        // Sort by time
+        return history.sort((a, b) => a.timestamp - b.timestamp);
+    }
 }

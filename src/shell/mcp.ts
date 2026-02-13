@@ -16,6 +16,8 @@ import { Role } from '../core/state';
 import fs from 'fs-extra';
 import path from 'path';
 import { randomUUID } from 'node:crypto';
+import { PromptManager } from '../core/prompt-manager';
+import { ContextBuilder } from '../core/context-builder';
 
 async function main() {
     // 1. Initialize Adapters
@@ -75,43 +77,31 @@ async function main() {
             }
         );
 
-        // Prompts Resource
+        // Prompts Resource (Dynamic)
         server.resource(
             `prompt-${role}`,
             `relay://prompts/${role}`,
-            async (uri) => {
+            async (uri, extra) => {
                 try {
-                    // V-06: Robust package root resolution for dist, symlinked, or bundled installs
-                    let packageRoot = path.resolve(__dirname, '..', '..');
-                    if (!(await fs.pathExists(path.join(packageRoot, 'prompts', 'mcp')))) {
-                        try {
-                            packageRoot = path.dirname(
-                                require.resolve('orchestrator-relay/package.json', { paths: [process.cwd(), __dirname] })
-                            );
-                        } catch {
-                            // Finding 5: Do not fallback to process.cwd(); keep packageRoot to return "System Prompt not found."
-                        }
-                    }
-                    const promptPath = path.join(packageRoot, 'prompts', 'mcp', `${role}.md`);
+                    // Dynamic Prompt Rendering
+                    // Trust the PromptManager to find templates or throw.
+                    const { state } = await store.readContext();
+                    const promptManager = new PromptManager(rootDir);
+                    const contextBuilder = new ContextBuilder(store, exchange, rootDir);
 
-                    if (await fs.pathExists(promptPath)) {
-                        const content = await fs.readFile(promptPath, 'utf-8');
-                        return {
-                            contents: [{
-                                uri: uri.href,
-                                text: content,
-                                mimeType: 'text/plain',
-                            }],
-                        };
-                    } else {
-                        return {
-                            contents: [{
-                                uri: uri.href,
-                                text: `System Prompt not found for ${role}.`,
-                                mimeType: 'text/plain',
-                            }],
-                        };
-                    }
+                    // Request context construction
+                    // TODO: Extract model from request if possible, or config
+                    const context = await contextBuilder.build(role, state);
+
+                    const rendered = promptManager.render(role, context);
+
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            text: rendered,
+                            mimeType: 'text/plain',
+                        }],
+                    };
                 } catch (err: any) {
                     console.error(`Prompts resource error for ${role}:`, err);
                     return {
