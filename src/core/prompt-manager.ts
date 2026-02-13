@@ -11,9 +11,15 @@ import { PromptContext } from './types/context';
 export class PromptManager {
     private env: nunjucks.Environment;
     private projectRoot: string;
+    private realProjectRoot: string;
 
     constructor(projectRoot: string) {
         this.projectRoot = projectRoot;
+        try {
+            this.realProjectRoot = fs.realpathSync(projectRoot);
+        } catch {
+            this.realProjectRoot = projectRoot;
+        }
 
         // Loaders: Priority .relay/prompts -> core/templates/prompts
         const searchPaths = [
@@ -27,7 +33,7 @@ export class PromptManager {
 
         this.env = new nunjucks.Environment(loader, {
             autoescape: false, // Markdown is text
-            throwOnUndefined: true,
+            throwOnUndefined: false, // Resilience: Do not crash on missing variables
             trimBlocks: true,
             lstripBlocks: true
         });
@@ -42,7 +48,17 @@ export class PromptManager {
             if (!relativePath) return '';
             const safePath = path.resolve(this.projectRoot, relativePath);
 
-            // SECURITY: Block traversal
+            // SECURITY: Block traversal & Symlinks
+            try {
+                const realPath = fs.realpathSync(safePath);
+                if (!realPath.startsWith(this.realProjectRoot)) {
+                    throw new Error(`Security Violation: Symlink traversal detected. Real path ${realPath} is outside project root.`);
+                }
+            } catch (err: any) {
+                if (err.code === 'ENOENT') return `[File not found: ${relativePath}]`;
+                throw err;
+            }
+
             if (!safePath.startsWith(this.projectRoot)) {
                 throw new Error(`Security Violation: Cannot read file outside project root: ${relativePath}`);
             }

@@ -92,6 +92,10 @@ export class ExchangeManager {
         for (const file of taskFiles) {
             try {
                 // author is always 'architect' or 'engineer'
+                // Format: {taskId}-{iter}-{author}-{slug}.md
+                const match = file.match(/^[a-zA-Z0-9_-]+-(\d+)-/);
+                const iteration = match ? parseInt(match[1], 10) : 0;
+
                 const author = file.includes('-architect-') ? 'architect' :
                     file.includes('-engineer-') ? 'engineer' : undefined;
 
@@ -104,7 +108,7 @@ export class ExchangeManager {
                     author,
                     content,
                     timestamp: stat.mtimeMs, // Approx timestamp
-                    iteration: 0
+                    iteration // Correctly parsed iteration
                 });
             } catch (err) {
                 console.warn(`Failed to read exchange file ${file}:`, err);

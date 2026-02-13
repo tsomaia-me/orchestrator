@@ -18,11 +18,17 @@ const MAX_FILE_SIZE_BYTES = 50 * 1024; // 50KB
 export async function readSafeFile(rootDir: string, relativePath: string): Promise<string | null> {
     if (!relativePath) return null;
 
+    // Resolve rootDir once to handle macOS /var -> /private/var aliasing
+    const realRootDir = await fs.realpath(rootDir);
+
     const safePath = path.resolve(rootDir, relativePath);
 
-    // SECURITY: Block traversal
-    if (!safePath.startsWith(rootDir)) {
-        throw new Error(`Security Violation: Cannot read file outside project root: ${relativePath}`);
+    // SECURITY: Block traversal & Symlinks
+    // Resolve the actual physical path to ensure it's inside rootDir
+    // This prevents symlinks inside rootDir pointing to files outside
+    const realPath = await fs.realpath(safePath);
+    if (!realPath.startsWith(realRootDir)) {
+        throw new Error(`Security Violation: Symlink traversal detected. Real path ${realPath} is outside project root.`);
     }
 
     if (!(await fs.pathExists(safePath))) {

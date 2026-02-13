@@ -90,8 +90,9 @@ async function main() {
                     const contextBuilder = new ContextBuilder(store, exchange, rootDir);
 
                     // Request context construction
-                    // TODO: Extract model from request if possible, or config
-                    const context = await contextBuilder.build(role, state);
+                    // Extract model from request arguments (if supported by client/protocol) or config
+                    const model = (extra as any)?.model || (extra as any)?.parameters?.model;
+                    const context = await contextBuilder.build(role, state, model);
 
                     const rendered = promptManager.render(role, context);
 
