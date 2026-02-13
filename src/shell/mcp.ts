@@ -94,7 +94,7 @@ async function main() {
                     const model = (extra as any)?.model || (extra as any)?.parameters?.model;
                     const context = await contextBuilder.build(role, state, model);
 
-                    const rendered = promptManager.render(role, context);
+                    const rendered = await promptManager.render(role, context);
 
                     return {
                         contents: [{

@@ -39,14 +39,55 @@ export async function readSafeFile(rootDir: string, relativePath: string): Promi
     try {
         const stats = await fs.stat(safePath);
         if (stats.size > MAX_FILE_SIZE_BYTES) {
-            // Read only the first N bytes
-            const fd = await fs.open(safePath, 'r');
-            const buffer = Buffer.alloc(MAX_FILE_SIZE_BYTES);
-            const { bytesRead } = await fs.read(fd, buffer, 0, MAX_FILE_SIZE_BYTES, 0);
-            await fs.close(fd);
-            return buffer.toString('utf-8', 0, bytesRead) + '\n...[TRUNCATED: File exceeded 50KB limit]';
+            // Round 2/3: Return distinct error string instead of truncated content
+            return '<<ERROR: FILE_TOO_LARGE>>';
         } else {
             return await fs.readFile(safePath, 'utf-8');
+        }
+    } catch (err) {
+        console.warn(`Safe read failed for ${relativePath}:`, err);
+        return null;
+    }
+}
+
+/**
+ * Synchronous version of readSafeFile for Nunjucks.
+ */
+export function readSafeFileSync(rootDir: string, relativePath: string): string | null {
+    if (!relativePath) return null;
+
+    // Resolve rootDir once
+    let realRootDir: string;
+    try {
+        realRootDir = fs.realpathSync(rootDir);
+    } catch {
+        realRootDir = rootDir; // Fallback
+    }
+
+    const safePath = path.resolve(rootDir, relativePath);
+
+    // SECURITY: Block traversal & Symlinks
+    let realPath: string;
+    try {
+        realPath = fs.realpathSync(safePath);
+    } catch (err: any) {
+        // File doesn't exist or other error
+        if (err.code === 'ENOENT') return null;
+        throw err;
+    }
+
+    if (!realPath.startsWith(realRootDir)) {
+        throw new Error(`Security Violation: Symlink traversal detected. Real path ${realPath} is outside project root.`);
+    }
+
+    // SECURITY: Size Limit (DoS Prevention)
+    try {
+        const stats = fs.statSync(safePath);
+        if (stats.size > MAX_FILE_SIZE_BYTES) {
+            // Round 2: Return distinct error string instead of truncated content
+            return '<<ERROR: FILE_TOO_LARGE>>';
+        } else {
+            return fs.readFileSync(safePath, 'utf-8');
         }
     } catch (err) {
         console.warn(`Safe read failed for ${relativePath}:`, err);

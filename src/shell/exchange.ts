@@ -93,13 +93,13 @@ export class ExchangeManager {
             try {
                 // author is always 'architect' or 'engineer'
                 // Format: {taskId}-{iter}-{author}-{slug}.md
-                const match = file.match(/^[a-zA-Z0-9_-]+-(\d+)-/);
-                const iteration = match ? parseInt(match[1], 10) : 0;
+                // Round 2: Strict regex to avoid ambiguity
+                const match = file.match(/^([a-zA-Z0-9_-]+)-(\d{3})-(architect|engineer)-/);
+                if (!match) continue;
 
-                const author = file.includes('-architect-') ? 'architect' :
-                    file.includes('-engineer-') ? 'engineer' : undefined;
-
-                if (!author) continue;
+                // const taskIdMatches = match[1] === taskId; // Implicit by filter
+                const iteration = parseInt(match[2], 10);
+                const author = match[3] as 'architect' | 'engineer';
 
                 const content = await fs.readFile(path.join(exchangeDir, file), 'utf-8');
                 const stat = await fs.stat(path.join(exchangeDir, file));
@@ -115,7 +115,7 @@ export class ExchangeManager {
             }
         }
 
-        // Sort by time
-        return history.sort((a, b) => a.timestamp - b.timestamp);
+        // Sort by iteration (Round 2: Deterministic sort)
+        return history.sort((a, b) => a.iteration - b.iteration);
     }
 }

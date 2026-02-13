@@ -50,7 +50,7 @@ async function verify() {
 
     console.log('Testing Architect Template Rendering...');
     try {
-        const output = manager.render('architect', context as any);
+        const output = await manager.render('architect', context as any);
         // console.log(output);
 
         if (output.includes('You are the **Architect**') || output.includes('ARCHITECT')) {
@@ -77,7 +77,7 @@ async function verify() {
     await fs.writeFile(architectPath, userOverrideContent);
 
     try {
-        const output = manager.render('architect', context as any);
+        const output = await manager.render('architect', context as any);
         if (output.includes('USER_OVERRIDE_VERIFIED')) {
             console.log('✅ User Override Verified.');
         } else {
@@ -100,9 +100,9 @@ async function verify() {
     await fs.writeFile(path.join(testDir, '.relay/prompts/dos.njk'), dosTemplate);
 
     try {
-        const output = manager.render('dos', context as any);
-        if (output.includes('[TRUNCATED')) {
-            console.log('✅ DoS Prevention Verified (File Truncated).');
+        const output = await manager.render('dos', context as any);
+        if (output.includes('<<ERROR: FILE_TOO_LARGE>>')) {
+            console.log('✅ DoS Prevention Verified (File Blocked).');
         } else {
             console.error('❌ DoS Prevention Failed: File was not truncated.');
             process.exit(1);
@@ -116,7 +116,7 @@ async function verify() {
     await fs.writeFile(path.join(testDir, '.relay/prompts/traversal.njk'), traversalTemplate);
 
     try {
-        manager.render('traversal', context as any);
+        await manager.render('traversal', context as any);
         console.error('❌ Traversal Verified Failed: Should have thrown error.');
         process.exit(1);
     } catch (e: any) {
@@ -136,7 +136,7 @@ async function verify() {
     // Context with model
     const gptContext = { ...context, env: { ...context.env, model: 'gpt-4' } };
 
-    const gptOutput = manager.render('architect', gptContext as any);
+    const gptOutput = await manager.render('architect', gptContext as any);
     if (gptOutput.includes('GPT-4 SPECIFIC CONTENT')) {
         console.log('✅ Model-Specific Template Verified.');
     } else {
