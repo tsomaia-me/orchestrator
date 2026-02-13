@@ -129,8 +129,9 @@ export class Store {
     }
 
     /**
-     * V03: Update + side effect within lock. V-02: Side-effect first, then state.
-     * No rollback — if sideEffect fails we never touch state.
+     * V03: Update + side effect within lock. V-02-R: State first, then side-effect.
+     * Audit log (tasks.jsonl) must reflect committed state — avoid ghost writes.
+     * If sideEffect fails after state commit, log error; state remains authoritative.
      */
     async updateWithSideEffect(
         updater: (state: RelayState) => RelayState,
@@ -141,10 +142,14 @@ export class Store {
             await this.cleanupOrphanTmp();
             const state = await this.read();
             const newState = updater(state);
-            await sideEffect(newState);
             const tmpPath = this.statePath + '.tmp';
             await fs.writeJson(tmpPath, newState, { spaces: 2 });
             await fs.move(tmpPath, this.statePath, { overwrite: true });
+            try {
+                await sideEffect(newState);
+            } catch (err: any) {
+                console.error('[Relay] Side-effect failed after state commit:', err?.message ?? err);
+            }
             return newState;
         } finally {
             await release();
