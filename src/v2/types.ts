@@ -12,7 +12,7 @@ export type TaskState = {
   featureId: FeatureId
   taskId: TaskId
   phase: Phase
-  handoff: Handoff
+  handoff: Handoff | null
   spec: {
     objective: string
     requirements: string[]
@@ -43,15 +43,14 @@ export type Handoff =
   | { type: 'directive'; data: Directive }
   | { type: 'report'; data: EngineerReport }
   | { type: 'approval'; data: Approval }
-  | { type: 'rejection'; data: Rejection }
-  | null;
+  | { type: 'rejection'; data: Rejection };
 
 export type Briefing = {
   featureId: string
   taskId: string
   phase: Phase
   task: TaskState
-  handoff: Handoff
+  handoff: Handoff | null
   instructions: string
 }
 

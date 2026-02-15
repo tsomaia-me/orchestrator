@@ -2,7 +2,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ApprovalSchema, CreateTaskSchema, DirectiveSchema, EngineerReportSchema, RejectionSchema } from './schema'
 import { createEmptyState, getPhaseDirective, runTruthCheck } from './helpers'
-import { Approval, Briefing, CreateTask, Directive, EngineerReport, Rejection } from './types'
+import {
+  Approval,
+  Briefing,
+  CreateTask,
+  Directive,
+  EngineerReport,
+  Handoff,
+  Rejection, TaskEventListener,
+  TaskEventName,
+  TaskState,
+} from './types'
 import { z } from 'zod'
 import { RelayStore } from './relay-store'
 import { FilePersistence } from './persistence/file-persistence'
@@ -256,30 +266,99 @@ server.registerTool('await_update', {
   const task = store.getActiveTask()
 
   if (!task) {
-    throw new Error('No active context. Call create_task or switch_context first.')
+    return {
+      content: [
+        { type: 'text', text: "No active task context." }
+      ]
+    }
   }
 
-  const directive = getPhaseDirective(task.phase)
+  const { featureId, taskId, phase } = task
+  const eventsToWatch: TaskEventName[] = []
+
+  switch (phase) {
+    case 'AWAITING_DIRECTIVE':
+      eventsToWatch.push(`${featureId}.${taskId}.post_directive`)
+      break
+    case 'AWAITING_IMPLEMENTATION_REPORT':
+      eventsToWatch.push(`${featureId}.${taskId}.post_implementation_report`)
+      break
+    case 'AWAITING_REVIEW':
+      eventsToWatch.push(`${featureId}.${taskId}.post_approval`)
+      eventsToWatch.push(`${featureId}.${taskId}.post_rejection`)
+      break
+    case 'AWAITING_COMMENTS_RESOLUTION':
+      eventsToWatch.push(`${featureId}.${taskId}.post_comments_resolution`)
+      break
+    case 'COMPLETED':
+      // No events to wait for; return immediately
+      break
+  }
+
+  const newState = await new Promise<TaskState | null>((resolve) => {
+    if (eventsToWatch.length === 0) {
+      return resolve(null)
+    }
+
+    let isResolved = false
+    const listeners: { name: TaskEventName, fn: TaskEventListener }[] = []
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      listeners.forEach(({ name, fn }) => eventListener.off(name, fn))
+    }
+
+    const handleEvent = (payload: TaskState) => {
+      if (!isResolved) {
+        isResolved = true
+        cleanup()
+        resolve(payload)
+      }
+    }
+
+    const timer = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true
+        cleanup()
+        resolve(null)
+      }
+    }, 30000)
+
+    eventsToWatch.forEach(name => {
+      eventListener.on(name, handleEvent)
+      listeners.push({ name, fn: handleEvent })
+    })
+  })
+
+  const finalTask = newState || store.getActiveTask()!
+
+  let handoff: Handoff | null = null
+
+  if (finalTask.handoff) {
+    const mapping: Record<string, Handoff['type']> = {
+      'AWAITING_IMPLEMENTATION_REPORT': 'directive',
+      'AWAITING_REVIEW': 'report',
+      'AWAITING_COMMENTS_RESOLUTION': 'rejection',
+      'COMPLETED': 'approval'
+    }
+    const type = mapping[finalTask.phase]
+    if (type) {
+      handoff = { type, data: finalTask.handoff.data } as Handoff
+    }
+  }
 
   const briefing: Briefing = {
-    featureId: task.featureId,
-    taskId: task.taskId,
-    phase: task.phase,
-    task,
-    handoff: task.handoff,
-    instructions: directive,
+    featureId: finalTask.featureId,
+    taskId: finalTask.taskId,
+    phase: finalTask.phase,
+    task: finalTask,
+    handoff: handoff,
+    instructions: getPhaseDirective(finalTask.phase)
   }
 
   return {
     content: [
-      {
-        type: 'text',
-        text: `### STATE DATA\n${JSON.stringify(briefing, null, 2)}`
-      },
-      {
-        type: 'text',
-        text: `### OPERATIONAL DIRECTIVE\n${directive}`
-      }
+      { type: 'text', text: `### MISSION BRIEFING\n${JSON.stringify(briefing, null, 2)}` }
     ],
   }
 })
