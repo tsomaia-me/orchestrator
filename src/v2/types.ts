@@ -57,3 +57,8 @@ export type Briefing = {
   handoff: Handoff
   instructions: string
 }
+
+export interface StatePersistence {
+  save(state: RelayState): Promise<void>;
+  load(): Promise<RelayState>;
+}
