@@ -1,8 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ApprovalSchema, CreateTaskSchema, DirectiveSchema, EngineerReportSchema, RejectionSchema } from './schema'
-import { createEmptyState, getActiveTask, runTruthCheck } from './helpers'
-import { Approval, CreateTask, Directive, EngineerReport, Rejection } from './types'
+import { createEmptyState, getActiveTask, getPhaseDirective, runTruthCheck } from './helpers'
+import { Approval, Briefing, CreateTask, Directive, EngineerReport, Rejection } from './types'
 import { z } from 'zod'
 
 const server = new McpServer({ name: 'relay-orchestrator', version: '5.0.0' })
@@ -17,7 +17,9 @@ server.registerTool('create_task', {
   if (!STATE.features[featureId]) STATE.features[featureId] = { tasks: {} }
 
   STATE.features[featureId].tasks[taskId] = {
-    phase: 'INITIAL',
+    featureId,
+    taskId,
+    phase: 'AWAITING_DIRECTIVE',
     spec,
     handoff: null,
   }
@@ -25,7 +27,7 @@ server.registerTool('create_task', {
   return {
     content: [{
       type: 'text',
-      text: `Context set: ${featureId}/${taskId}. Phase: INITIAL.`,
+      text: `Context set: ${featureId}/${taskId}. Phase: AWAITING_DIRECTIVE.`,
     }],
   }
 })
@@ -74,7 +76,7 @@ server.registerTool('post_directive', {
     throw new Error(`Phase mismatch: ${task.phase}`)
   }
 
-  task.handoff = data
+  task.handoff = { type: 'directive', data }
   task.phase = 'AWAITING_IMPLEMENTATION_REPORT'
 
   return {
@@ -96,7 +98,7 @@ server.registerTool('post_implementation_report', {
 
   runTruthCheck(data.checks)
 
-  task.handoff = data
+  task.handoff = { type: 'report', data }
   task.phase = 'AWAITING_REVIEW'
 
   return {
@@ -115,7 +117,7 @@ server.registerTool('post_approval', {
     throw new Error('Phase mismatch.')
   }
 
-  task.handoff = data
+  task.handoff = { type: 'approval', data }
   task.phase = 'COMPLETED'
 
   return {
@@ -134,7 +136,7 @@ server.registerTool('post_rejection', {
     throw new Error('Phase mismatch.')
   }
 
-  task.handoff = data
+  task.handoff = { type: 'rejection', data }
   task.phase = 'AWAITING_COMMENTS_RESOLUTION'
 
   return {
@@ -148,46 +150,39 @@ server.registerTool('await_update', {
   description: 'Polls the relay for the current state and receives a contextual mission briefing.',
   inputSchema: z.object({}),
 }, async () => {
-  const task = getActiveTask(STATE)
-  const context = STATE.currentContext!
+  try {
+    const task = getActiveTask(STATE)
+    const context = STATE.currentContext!
+    const directive = getPhaseDirective(task.phase)
 
-  let briefing: any = {
-    featureId: context.featureId,
-    taskId: context.taskId,
-    phase: task.phase,
-    spec: task.spec,
-  }
+    const briefing: Briefing = {
+      featureId: context.featureId,
+      taskId: context.taskId,
+      phase: task.phase,
+      task,
+      handoff: task.handoff,
+      instructions: directive,
+    }
 
-  switch (task.phase) {
-    case 'AWAITING_DIRECTIVE':
-      briefing.instructions = 'You are the ARCHITECT. Analyze the \'spec\' and provide a technical \'blueprint\' using \'post_directive\'.'
-      briefing.required_next_tool = 'post_directive'
-      break
-
-    case 'AWAITING_IMPLEMENTATION_REPORT':
-      briefing.instructions = 'You are the ENGINEER. Implement the \'blueprint\' provided in the \'handoff\'. You MUST run the truth-check commands listed in your config.'
-      briefing.architect_handoff = task.handoff
-      briefing.required_next_tool = 'post_implementation_report'
-      break
-
-    case 'AWAITING_REVIEW':
-      briefing.instructions = 'You are the ARCHITECT. Review the \'engineer_handoff\' for quality and correctness. Approve or reject.'
-      briefing.engineer_handoff = task.handoff
-      briefing.required_next_tool = ['post_approval', 'post_rejection']
-      break
-
-    case 'AWAITING_COMMENTS_RESOLUTION':
-      briefing.instructions = 'You are the ENGINEER. The Architect REJECTED the previous work. Fix the \'required_fixes\' and re-submit.'
-      briefing.rejection_details = task.handoff
-      briefing.required_next_tool = 'post_implementation_report'
-      break
-  }
-
-  return {
-    content: [{
-      type: 'text',
-      text: JSON.stringify(briefing, null, 2),
-    }],
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `### STATE DATA\n${JSON.stringify(briefing, null, 2)}`
+        },
+        {
+          type: 'text',
+          text: `### OPERATIONAL DIRECTIVE\n${directive}`
+        }
+      ],
+    }
+  } catch (e) {
+    return {
+      content: [{
+        type: 'text',
+        text: "No active task context found. Please initialize a task using 'create_task' first."
+      }],
+    }
   }
 })
 
