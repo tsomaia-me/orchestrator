@@ -61,6 +61,22 @@ Add this to your MCP settings file (typically `~/.cursor/mcp.json` or similar):
 }
 ```
 
+**Option A2 — With explicit project root (fixes wrong cwd when Cursor spawns from ~/):**
+```json
+{
+  "mcpServers": {
+    "relay": {
+      "command": "npx",
+      "args": ["-y", "orchestrator-relay", "mcp"],
+      "env": {
+        "RELAY_ROOT": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
+Replace the path with your project root. On Windows, use forward slashes or escaped backslashes.
+
 **Option B — Local clone:**
 ```json
 {
@@ -121,6 +137,7 @@ Relay keeps a transparent record of all activities in your project root:
 
 ## ⚠️ Troubleshooting
 
+-   **".relay created in wrong place (e.g. ~/)"**: Cursor may spawn MCP with cwd = home. Use `RELAY_ROOT` in your mcp.json (see Option A2 above) to force the project root.
 -   **"Task stuck in loop"**: Ensure the Architect uses `decision: "APPROVE"` to close the task.
 -   **"Lock file exists"**: If Relay crashes, a `relay.lock` file might remain in `.relay/`. It automatically expires after 1 hour, or you can manually delete it.
 

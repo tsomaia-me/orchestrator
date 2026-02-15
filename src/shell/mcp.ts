@@ -21,7 +21,11 @@ import { ContextBuilder } from '../core/context-builder';
 
 async function main() {
     // 1. Initialize Adapters
-    const rootDir = await Store.findRoot() || process.cwd();
+    // RELAY_ROOT: Explicit project root (fixes wrong cwd when Cursor spawns MCP from ~/)
+    const explicitRoot = process.env.RELAY_ROOT?.trim();
+    const rootDir = explicitRoot
+        ? path.resolve(explicitRoot)
+        : (await Store.findRoot()) || process.cwd();
 
     const exchange = new ExchangeManager(rootDir);
     const store = new Store(rootDir, exchange);
@@ -276,7 +280,7 @@ async function main() {
     // 5. Connect Transport
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error(`Relay MCP Server running at ${rootDir}`);
+    console.error(`Relay MCP Server running at ${rootDir}${explicitRoot ? ' (via RELAY_ROOT)' : ''}`);
 }
 
 main().catch((err) => {
