@@ -81,7 +81,7 @@ server.registerTool('post_directive', {
 
   return {
     content: [
-      { type: 'text', text: 'Directive locked. Phase: AWAITING_ENGINEER.' },
+      { type: 'text', text: 'Directive locked. Phase: AWAITING_IMPLEMENTATION_REPORT.' },
     ],
   }
 })
@@ -93,6 +93,28 @@ server.registerTool('post_implementation_report', {
   const task = getActiveTask(STATE)
 
   if (!['AWAITING_IMPLEMENTATION_REPORT', 'AWAITING_COMMENTS_RESOLUTION'].includes(task.phase)) {
+    throw new Error('Phase mismatch.')
+  }
+
+  runTruthCheck(data.checks)
+
+  task.handoff = { type: 'report', data }
+  task.phase = 'AWAITING_REVIEW'
+
+  return {
+    content: [
+      { type: 'text', text: 'Truth-check passed. Phase: AWAITING_ARCHITECT_REVIEW.' },
+    ],
+  }
+})
+
+server.registerTool('post_comments_resolution', {
+  description: 'Engineer submits comments resolution for further review.',
+  inputSchema: EngineerReportSchema,
+}, async (data: EngineerReport) => {
+  const task = getActiveTask(STATE)
+
+  if (!['AWAITING_COMMENTS_RESOLUTION'].includes(task.phase)) {
     throw new Error('Phase mismatch.')
   }
 
