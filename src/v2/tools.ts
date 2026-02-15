@@ -6,6 +6,18 @@ import { ApprovalSchema, CreateTaskSchema, DirectiveSchema, EngineerReportSchema
  * its capabilities to Cursor/the Agent.
  */
 export const tools = {
+  load_architect_protocol: {
+    name: 'load_architect_protocol',
+    description: 'Retrieves the SOP and guidelines for the Architect persona.',
+    schema: z.object({}),
+  },
+
+  load_engineer_protocol: {
+    name: 'load_engineer_protocol',
+    description: 'Retrieves the SOP and guidelines for the Engineer persona.',
+    schema: z.object({}),
+  },
+
   create_task: {
     name: 'create_task',
     description: 'Initializes a new feature and task. Sets the project to AWAITING_ARCHITECT_DIRECTIVE.',
