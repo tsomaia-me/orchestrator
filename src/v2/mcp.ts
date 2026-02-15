@@ -1,29 +1,35 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ApprovalSchema, CreateTaskSchema, DirectiveSchema, EngineerReportSchema, RejectionSchema } from './schema'
-import { createEmptyState, getActiveTask, getPhaseDirective, runTruthCheck } from './helpers'
+import { createEmptyState, getPhaseDirective, runTruthCheck } from './helpers'
 import { Approval, Briefing, CreateTask, Directive, EngineerReport, Rejection } from './types'
 import { z } from 'zod'
+import { RelayStore } from './relay-store'
+import { FilePersistence } from './persistence/file-persistence'
+import { EventListener } from './event-listener'
 
 const server = new McpServer({ name: 'relay-orchestrator', version: '5.0.0' })
 
-const STATE = createEmptyState()
+const store = new RelayStore({
+  initialState: createEmptyState(),
+  persistence: new FilePersistence('.relay/state.json'),
+})
+const eventListener = new EventListener()
 
 server.registerTool('create_task', {
   description: 'Initializes a new task within a feature.',
   inputSchema: CreateTaskSchema,
 }, async (input: CreateTask) => {
   const { featureId, taskId, spec } = input
-  if (!STATE.features[featureId]) STATE.features[featureId] = { tasks: {} }
 
-  STATE.features[featureId].tasks[taskId] = {
+  store.addTask({
     featureId,
     taskId,
     phase: 'AWAITING_DIRECTIVE',
     spec,
     handoff: null,
-  }
-  STATE.currentContext = { featureId, taskId }
+  })
+
   return {
     content: [{
       type: 'text',
@@ -70,14 +76,25 @@ server.registerTool('post_directive', {
   description: 'Architect submits blueprint to Engineer.',
   inputSchema: DirectiveSchema,
 }, async (data: Directive) => {
-  const task = getActiveTask(STATE)
+  const task = store.getActiveTask()
+
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
 
   if (task.phase !== 'AWAITING_DIRECTIVE') {
     throw new Error(`Phase mismatch: ${task.phase}`)
   }
 
-  task.handoff = { type: 'directive', data }
-  task.phase = 'AWAITING_IMPLEMENTATION_REPORT'
+  store.updateActiveTask(prev => ({
+    ...prev,
+    phase: 'AWAITING_IMPLEMENTATION_REPORT',
+    handoff: { type: 'directive', data },
+  }))
+  eventListener.trigger(
+    `${task.featureId}.${task.taskId}.post_directive`,
+    task,
+  )
 
   return {
     content: [
@@ -90,7 +107,11 @@ server.registerTool('post_implementation_report', {
   description: 'Engineer submits implementation for verification.',
   inputSchema: EngineerReportSchema,
 }, async (data: EngineerReport) => {
-  const task = getActiveTask(STATE)
+  const task = store.getActiveTask()
+
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
 
   if (!['AWAITING_IMPLEMENTATION_REPORT', 'AWAITING_COMMENTS_RESOLUTION'].includes(task.phase)) {
     throw new Error('Phase mismatch.')
@@ -98,8 +119,15 @@ server.registerTool('post_implementation_report', {
 
   runTruthCheck(data.checks)
 
-  task.handoff = { type: 'report', data }
-  task.phase = 'AWAITING_REVIEW'
+  store.updateActiveTask(prev => ({
+    ...prev,
+    phase: 'AWAITING_REVIEW',
+    handoff: { type: 'report', data },
+  }))
+  eventListener.trigger(
+    `${task.featureId}.${task.taskId}.post_implementation_report`,
+    task,
+  )
 
   return {
     content: [
@@ -111,8 +139,12 @@ server.registerTool('post_implementation_report', {
 server.registerTool('post_comments_resolution', {
   description: 'Engineer submits comments resolution for further review.',
   inputSchema: EngineerReportSchema,
-}, async (data: EngineerReport) => {
-  const task = getActiveTask(STATE)
+}, (data: EngineerReport) => {
+  const task = store.getActiveTask()
+
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
 
   if (!['AWAITING_COMMENTS_RESOLUTION'].includes(task.phase)) {
     throw new Error('Phase mismatch.')
@@ -120,8 +152,15 @@ server.registerTool('post_comments_resolution', {
 
   runTruthCheck(data.checks)
 
-  task.handoff = { type: 'report', data }
-  task.phase = 'AWAITING_REVIEW'
+  store.updateActiveTask(prev => ({
+    ...prev,
+    phase: 'AWAITING_REVIEW',
+    handoff: { type: 'report', data },
+  }))
+  eventListener.trigger(
+    `${task.featureId}.${task.taskId}.post_comments_resolution`,
+    task,
+  )
 
   return {
     content: [
@@ -134,13 +173,43 @@ server.registerTool('post_approval', {
   description: 'Architect approves work.',
   inputSchema: ApprovalSchema,
 }, async (data: Approval) => {
-  const task = getActiveTask(STATE)
+  const task = store.getActiveTask()
+
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
+
   if (task.phase !== 'AWAITING_REVIEW') {
     throw new Error('Phase mismatch.')
   }
 
-  task.handoff = { type: 'approval', data }
-  task.phase = 'COMPLETED'
+  const nextTask = store.getNextTask()
+
+  if (nextTask) {
+    store.updateActiveTask(prev => ({
+      ...prev,
+      phase: 'AWAITING_IMPLEMENTATION_REPORT',
+      handoff: { type: 'approval', data },
+    }))
+    eventListener.trigger(
+      `${task.featureId}.${task.taskId}.post_approval`,
+      task,
+    )
+  } else {
+    store.updateActiveTask(prev => ({
+      ...prev,
+      phase: 'COMPLETED',
+      handoff: { type: 'approval', data },
+    }))
+    eventListener.trigger(
+      `${task.featureId}.${task.taskId}.post_approval`,
+      task,
+    )
+    eventListener.trigger(
+      `${task.featureId}.${task.taskId}.completed`,
+      task,
+    )
+  }
 
   return {
     content: [
@@ -153,13 +222,25 @@ server.registerTool('post_rejection', {
   description: 'Architect rejects work with required fixes.',
   inputSchema: RejectionSchema,
 }, async (data: Rejection) => {
-  const task = getActiveTask(STATE)
+  const task = store.getActiveTask()
+
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
+
   if (task.phase !== 'AWAITING_REVIEW') {
     throw new Error('Phase mismatch.')
   }
 
-  task.handoff = { type: 'rejection', data }
-  task.phase = 'AWAITING_COMMENTS_RESOLUTION'
+  store.updateActiveTask(prev => ({
+    ...prev,
+    phase: 'AWAITING_COMMENTS_RESOLUTION',
+    handoff: { type: 'rejection', data },
+  }))
+  eventListener.trigger(
+    `${task.featureId}.${task.taskId}.post_rejection`,
+    task,
+  )
 
   return {
     content: [
@@ -172,39 +253,34 @@ server.registerTool('await_update', {
   description: 'Polls the relay for the current state and receives a contextual mission briefing.',
   inputSchema: z.object({}),
 }, async () => {
-  try {
-    const task = getActiveTask(STATE)
-    const context = STATE.currentContext!
-    const directive = getPhaseDirective(task.phase)
+  const task = store.getActiveTask()
 
-    const briefing: Briefing = {
-      featureId: context.featureId,
-      taskId: context.taskId,
-      phase: task.phase,
-      task,
-      handoff: task.handoff,
-      instructions: directive,
-    }
+  if (!task) {
+    throw new Error('No active context. Call create_task or switch_context first.')
+  }
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `### STATE DATA\n${JSON.stringify(briefing, null, 2)}`
-        },
-        {
-          type: 'text',
-          text: `### OPERATIONAL DIRECTIVE\n${directive}`
-        }
-      ],
-    }
-  } catch (e) {
-    return {
-      content: [{
+  const directive = getPhaseDirective(task.phase)
+
+  const briefing: Briefing = {
+    featureId: task.featureId,
+    taskId: task.taskId,
+    phase: task.phase,
+    task,
+    handoff: task.handoff,
+    instructions: directive,
+  }
+
+  return {
+    content: [
+      {
         type: 'text',
-        text: "No active task context found. Please initialize a task using 'create_task' first."
-      }],
-    }
+        text: `### STATE DATA\n${JSON.stringify(briefing, null, 2)}`
+      },
+      {
+        type: 'text',
+        text: `### OPERATIONAL DIRECTIVE\n${directive}`
+      }
+    ],
   }
 })
 

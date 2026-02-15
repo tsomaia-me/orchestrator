@@ -9,8 +9,8 @@ export type Phase =
   | 'COMPLETED'
 
 export type TaskState = {
-  featureId: string
-  taskId: string
+  featureId: FeatureId
+  taskId: TaskId
   phase: Phase
   handoff: Handoff
   spec: {
@@ -21,18 +21,15 @@ export type TaskState = {
 }
 
 export type FeatureState = {
-  tasks: {
-    [taskId: string]: TaskState
-  }
+  id: FeatureId
+  tasks: TaskState[]
 }
 
 export type RelayState = {
-  features: {
-    [featureId: string]: FeatureState
-  }
+  features: FeatureState[]
   currentContext: {
-    featureId: string;
-    taskId: string;
+    featureId: FeatureId;
+    taskId: TaskId;
   } | null
 }
 
@@ -62,3 +59,15 @@ export interface StatePersistence {
   save(state: RelayState): Promise<void>;
   load(): Promise<RelayState>;
 }
+
+export type FeatureId = string
+export type TaskId = string
+export type TaskEventType =
+  | 'post_directive'
+  | 'post_implementation_report'
+  | 'post_approval'
+  | 'post_rejection'
+  | 'post_comments_resolution'
+  | 'completed'
+export type TaskEventName = `${FeatureId}.${TaskId}.${TaskEventType}`
+export type TaskEventListener = (task: TaskState) => void

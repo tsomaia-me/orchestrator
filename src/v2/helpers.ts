@@ -6,7 +6,7 @@ import { Phase, RelayState } from './types'
 
 export function createEmptyState(): RelayState {
   return {
-    features: {},
+    features: [],
     currentContext: null,
   }
 }
@@ -21,16 +21,6 @@ export function runTruthCheck(checks: z.infer<typeof EngineerReportSchema>['chec
       throw new Error(`[VERIFICATION FAILURE] ${check.checkId}: ${e.stderr?.toString() || e.message}`)
     }
   }
-}
-
-export function getActiveTask(state: RelayState) {
-  if (!state.currentContext) {
-    throw new Error('No active context. Call create_task or switch_context first.')
-  }
-
-  const { featureId, taskId } = state.currentContext
-
-  return state.features[featureId].tasks[taskId]
 }
 
 export function getPhaseDirective(phase: Phase): string {
