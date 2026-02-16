@@ -28,6 +28,17 @@ export class EventListener {
     }
   }
 
+  async listen(event: TaskEventName): Promise<TaskState> {
+    return await new Promise(resolve => {
+      let listener: TaskEventListener
+      listener = (payload: TaskState) => {
+        this.off(event, listener)
+        resolve(payload)
+      }
+      this.on(event, listener)
+    })
+  }
+
   trigger(event: TaskEventName, payload: TaskState) {
     const listeners = this.listeners.get(event)?.forEach(l => {
       l(payload)

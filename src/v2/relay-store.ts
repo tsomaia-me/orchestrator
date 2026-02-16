@@ -23,6 +23,22 @@ export class RelayStore {
     this.persistence?.save(state)
   }
 
+  setActiveFeature(featureId: FeatureId) {
+    const feature = this.state.features.find(feature => feature.id === featureId)
+
+    if (!feature) {
+      throw new Error('No feature found with ID: ' + featureId)
+    }
+
+    const task = feature.tasks.find(task => task.phase !== 'COMPLETED')
+
+    if (!task) {
+      throw new Error(`The feature ${featureId} does not have any pending tasks`)
+    }
+
+    this.setActiveTask(featureId, task.taskId)
+  }
+
   getFeature(
     featureId: FeatureId,
   ): FeatureState | null {
@@ -33,14 +49,20 @@ export class RelayStore {
   getTask(
     featureId: FeatureId,
     taskId: TaskId,
-  ): TaskState | null {
-    return this.getFeature(featureId)?.tasks
-      .find(task => task.taskId === taskId) ?? null
+  ): TaskState {
+    const task = this.getFeature(featureId)?.tasks
+      .find(task => task.taskId === taskId)
+
+    if (!task) {
+      throw new Error('No task found with ID: ' + featureId)
+    }
+
+    return task
   }
 
   getActiveTask() {
     if (!this.state.currentContext) {
-      return null
+      throw new Error('No active task found')
     }
 
     const { featureId, taskId } = this.state.currentContext
@@ -50,7 +72,7 @@ export class RelayStore {
 
   getNextTask() {
     if (!this.state.currentContext) {
-      return null
+      throw new Error('No active task found')
     }
 
     const { featureId, taskId } = this.state.currentContext
@@ -63,7 +85,7 @@ export class RelayStore {
     const index = feature.tasks
       .findIndex(task => task.taskId === taskId) ?? -1
 
-    return feature.tasks[index + 1] ?? null
+    return feature.tasks.slice(index).find(task => task.phase !== 'COMPLETED')
   }
 
   setActiveTask(featureId: FeatureId, taskId: TaskId) {

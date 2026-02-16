@@ -10,6 +10,10 @@ export class FilePersistence implements StatePersistence {
     this.filePath = path.resolve(filePath);
   }
 
+  setFilePath(filePath: string) {
+    this.filePath = path.resolve(filePath);
+  }
+
   async save(state: RelayState): Promise<void> {
     const dir = path.dirname(this.filePath);
     await fs.mkdir(dir, { recursive: true });

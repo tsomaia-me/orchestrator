@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+export const LoadProtocolSchema = z.object({
+  projectRoot: z.string().describe('The absolute path to the current project root.'),
+})
+
 export const CreateTaskSchema = z.object({
   featureId: z.string().describe('Unique identifier for the feature, e.g., \'user-auth\''),
   taskId: z.string().describe('Specific task within the feature, e.g., \'jwt-implementation\''),
@@ -89,4 +93,8 @@ export const RejectionSchema = z.object({
   rejection_reason: z.string().describe('High-level explanation of why the work failed to meet standards.'),
   required_fixes: z.array(z.string()).describe('List of mandatory changes the Engineer must implement for the next submission.'),
   suggestions: z.array(z.string()).optional().describe('Non-mandatory suggestions to the identified issues, possible improvements and/or architectural advice.'),
+})
+
+export const SetActiveFeatureSchema = z.object({
+  featureId: z.string().describe('Unique identifier for the feature, e.g., \'user-auth\''),
 })

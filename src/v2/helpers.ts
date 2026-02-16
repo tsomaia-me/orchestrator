@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { EngineerReportSchema } from './schema'
 import path from 'path'
 import { Phase, RelayState } from './types'
+import fs from 'fs'
+import { FilePersistence } from './persistence/file-persistence'
 
 export function createEmptyState(): RelayState {
   return {
@@ -43,4 +45,28 @@ export function getPhaseDirective(phase: Phase): string {
     default:
       return 'Analyze the current state data and proceed with the logical next step in the development lifecycle.'
   }
+}
+
+export function initialize(projectRoot: string, persistence: FilePersistence) {
+  // const PROJECT_ROOT = path.join(path.dirname(__filename), '../..');
+
+  const RELAY_PATH = path.resolve(projectRoot, '.relay');
+  const LOG_FILE = path.resolve(RELAY_PATH, 'debug.log');
+
+  fs.mkdirSync(RELAY_PATH, { recursive: true });
+
+  function log(message: string, data?: any) {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message} ${data ? JSON.stringify(data, null, 2) : ''}\n`;
+    fs.appendFileSync(LOG_FILE, logEntry);
+  }
+
+  console.log = (...args) => log('INFO:', args.map(arg => JSON.stringify(arg)));
+  console.error = (...args) => log('ERROR:', args.map(arg => JSON.stringify(arg)));
+
+  fs.writeFileSync(LOG_FILE, '');
+
+  console.log('PROJECT_ROOT', projectRoot);
+
+  persistence.setFilePath(path.resolve(projectRoot, '.relay/state.json'))
 }

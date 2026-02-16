@@ -1,5 +1,12 @@
 import { z } from 'zod/index'
-import { ApprovalSchema, CreateTaskSchema, DirectiveSchema, EngineerReportSchema, RejectionSchema } from './schema'
+import {
+  ApprovalSchema,
+  CreateTaskSchema,
+  DirectiveSchema,
+  EngineerReportSchema, LoadProtocolSchema,
+  RejectionSchema,
+  SetActiveFeatureSchema,
+} from './schema'
 
 export type Phase =
   | 'AWAITING_DIRECTIVE'
@@ -33,11 +40,13 @@ export type RelayState = {
   } | null
 }
 
+export type LoadProtocol = z.infer<typeof LoadProtocolSchema>
 export type CreateTask = z.infer<typeof CreateTaskSchema>
 export type Directive = z.infer<typeof DirectiveSchema>
 export type EngineerReport = z.infer<typeof EngineerReportSchema>
 export type Approval = z.infer<typeof ApprovalSchema>
 export type Rejection = z.infer<typeof RejectionSchema>
+export type SetActiveFeature = z.infer<typeof SetActiveFeatureSchema>
 
 export type Handoff =
   | { type: 'directive'; data: Directive }
@@ -68,5 +77,7 @@ export type TaskEventType =
   | 'post_rejection'
   | 'post_comments_resolution'
   | 'completed'
-export type TaskEventName = `${FeatureId}.${TaskId}.${TaskEventType}`
+export type TaskEventName =
+  | 'set_active_task'
+  | `${FeatureId}.${TaskId}.${TaskEventType}`
 export type TaskEventListener = (task: TaskState) => void
