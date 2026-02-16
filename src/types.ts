@@ -1,12 +1,15 @@
-import { z } from 'zod/index'
+import { z } from 'zod'
 import {
   ApprovalSchema,
   CreateTaskSchema,
   DirectiveSchema,
-  EngineerReportSchema, LoadProtocolSchema,
+  EngineerReportSchema,
+  LoadProtocolSchema,
   RejectionSchema,
   SetActiveFeatureSchema,
 } from './schema'
+
+export type Role = 'architect' | 'engineer'
 
 export type Phase =
   | 'AWAITING_DIRECTIVE'
@@ -14,6 +17,20 @@ export type Phase =
   | 'AWAITING_REVIEW'
   | 'AWAITING_COMMENTS_RESOLUTION'
   | 'COMPLETED'
+
+/** Phases where the Architect has work to do (await_engineer_update returns immediately) */
+export const ARCHITECT_ACTIVE_PHASES: readonly Phase[] = [
+  'AWAITING_DIRECTIVE',
+  'AWAITING_REVIEW',
+  'COMPLETED',
+] as const
+
+/** Phases where the Engineer has work to do (await_architect_update returns immediately) */
+export const ENGINEER_ACTIVE_PHASES: readonly Phase[] = [
+  'AWAITING_IMPLEMENTATION_REPORT',
+  'AWAITING_COMMENTS_RESOLUTION',
+  'COMPLETED',
+] as const
 
 export type TaskState = {
   featureId: FeatureId
@@ -64,8 +81,8 @@ export type Briefing = {
 }
 
 export interface StatePersistence {
-  save(state: RelayState): Promise<void>;
-  load(): Promise<RelayState>;
+  save(state: RelayState): void;
+  load(): RelayState;
 }
 
 export type FeatureId = string

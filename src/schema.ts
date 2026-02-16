@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const LoadProtocolSchema = z.object({
-  projectRoot: z.string().describe('The absolute path to the current project root.'),
+  projectRoot: z.string().describe('The absolute path to the current project root. Required for initialization.'),
 })
 
 export const CreateTaskSchema = z.object({
@@ -34,7 +34,7 @@ export const EngineerReportSchema = z.object({
     'manually_reviewed_and_ignored_issues',
     'did_not_review_got_lazy'
   ]).describe('Engineer\'s self-assessment of the code quality before submission.'),
-  checks: z.array(CommandStatusSchema).describe('List of terminal commands run to prove implementation validity.'),
+  checks: z.array(CommandStatusSchema).describe('List of terminal commands run to prove implementation validity. These are self-reported attestations — the server does NOT execute them.'),
   coverage_status: z.enum(['new_functionality_fully_covered', 'got_lazy']).describe('Confirmation of test coverage for new logic.'),
   implementation_status: z.enum(['fully_implemented', 'got_lazy']).describe('Confirmation that all requirements from the spec were addressed.'),
   implementation_notes: z.string().describe('Details regarding the technical choices or hurdles encountered during coding.'),
@@ -84,8 +84,6 @@ export const ApprovalSchema = z.object({
     'I_the_architect_am_responsible_for_quality',
     'dismiss'
   ]).describe('Formal assumption of risk for the code entering the codebase.'),
-
-  next_task_directive: DirectiveSchema.describe('Instructions for the next block of work following this approval.'),
 })
 
 export const RejectionSchema = z.object({
@@ -98,3 +96,5 @@ export const RejectionSchema = z.object({
 export const SetActiveFeatureSchema = z.object({
   featureId: z.string().describe('Unique identifier for the feature, e.g., \'user-auth\''),
 })
+
+export const AwaitUpdateSchema = z.object({})

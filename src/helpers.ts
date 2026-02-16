@@ -1,10 +1,53 @@
-import { execSync } from 'node:child_process'
-import { z } from 'zod'
-import { EngineerReportSchema } from './schema'
 import path from 'path'
-import { Phase, RelayState } from './types'
 import fs from 'fs'
+import { Phase, RelayState } from './types'
 import { FilePersistence } from './persistence/file-persistence'
+
+// ── Idempotent initialization ─────────────────────────────────────
+
+let initialized = false
+
+/**
+ * Initialize the relay working directory and persistence layer.
+ * Idempotent — safe to call multiple times, only runs once.
+ *
+ * Resolution: explicit projectRoot > RELAY_ROOT env > process.cwd()
+ */
+export function initialize(projectRoot: string, persistence: FilePersistence): void {
+  if (initialized) return
+
+  const resolvedRoot = projectRoot
+    || process.env.RELAY_ROOT
+    || process.cwd()
+
+  const relayPath = path.resolve(resolvedRoot, '.relay')
+  const logFile = path.resolve(relayPath, 'debug.log')
+
+  fs.mkdirSync(relayPath, { recursive: true })
+
+  // File-append logger — never truncates existing logs
+  const log = (level: string, args: unknown[]) => {
+    const timestamp = new Date().toISOString()
+    const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
+    fs.appendFileSync(logFile, `[${timestamp}] ${level} ${message}\n`)
+  }
+
+  console.log = (...args) => log('INFO', args)
+  console.error = (...args) => log('ERROR', args)
+
+  persistence.setFilePath(path.resolve(relayPath, 'state.json'))
+
+  console.log('Relay initialized', { projectRoot: resolvedRoot, relayPath })
+
+  initialized = true
+}
+
+/** Reset init guard — for testing only */
+export function resetInitialization(): void {
+  initialized = false
+}
+
+// ── State factory ─────────────────────────────────────────────────
 
 export function createEmptyState(): RelayState {
   return {
@@ -13,60 +56,49 @@ export function createEmptyState(): RelayState {
   }
 }
 
-export function runTruthCheck(checks: z.infer<typeof EngineerReportSchema>['checks']) {
-  for (const check of checks) {
-    if (check.status === 'got_lazy') continue
-    try {
-      const runPath = path.resolve(process.cwd(), check.relative_path)
-      execSync(check.command, { cwd: runPath, stdio: 'pipe', timeout: 60000 })
-    } catch (e: any) {
-      throw new Error(`[VERIFICATION FAILURE] ${check.checkId}: ${e.stderr?.toString() || e.message}`)
-    }
-  }
-}
+// ── Phase instructions ────────────────────────────────────────────
 
 export function getPhaseDirective(phase: Phase): string {
   switch (phase) {
     case 'AWAITING_DIRECTIVE':
-      return 'You are acting as the ARCHITECT. Analyze the task \'spec\' and provide a technical \'blueprint\' via \'post_directive\'. Call \'load_architect_protocol\' if you need a refresher on standards.'
+      return [
+        'You are the ARCHITECT.',
+        'Analyze the task spec and design a technical blueprint.',
+        'Submit your blueprint via `post_directive`.',
+        'Then call `await_engineer_update` to wait for the Engineer\'s implementation report.',
+      ].join(' ')
 
     case 'AWAITING_IMPLEMENTATION_REPORT':
-      return 'You are acting as the ENGINEER. Implement the blueprint found in \'current_handoff\'. You MUST verify your work with shell commands and report them via \'post_implementation_report\'. Call \'load_engineer_protocol\' for your SOPs.'
+      return [
+        'You are the ENGINEER.',
+        'Read the Architect\'s directive in the handoff.',
+        'Implement the requested changes, verify your work with build/test commands.',
+        'Submit your report via `post_implementation_report`.',
+        'Then call `await_architect_update` to wait for the Architect\'s review.',
+      ].join(' ')
 
     case 'AWAITING_REVIEW':
-      return 'You are acting as the ARCHITECT. Review the \'current_handoff\' (the Engineer\'s report). Check their truth-check commands for validity. Approve via \'post_approval\' or reject via \'post_rejection\'.'
+      return [
+        'You are the ARCHITECT.',
+        'Review the Engineer\'s report in the handoff.',
+        'Verify their claims and check code quality.',
+        'Approve via `post_approval` or reject via `post_rejection`.',
+        'After submitting, call `await_engineer_update` if more tasks remain.',
+      ].join(' ')
 
     case 'AWAITING_COMMENTS_RESOLUTION':
-      return 'You are acting as the ENGINEER. The previous implementation was REJECTED. Review the \'current_handoff\' for required fixes, implement them, and re-submit using \'post_implementation_report\'.'
+      return [
+        'You are the ENGINEER.',
+        'Your previous implementation was REJECTED.',
+        'Read the rejection feedback in the handoff, implement the required fixes.',
+        'Submit your resolution via `post_comments_resolution`.',
+        'Then call `await_architect_update` to wait for re-review.',
+      ].join(' ')
 
     case 'COMPLETED':
-      return 'This task is marked as COMPLETED. No further action is required unless a new task is initialized.'
+      return 'This task is COMPLETED. No further action required. Call the await tool to pick up the next task if one exists.'
 
     default:
-      return 'Analyze the current state data and proceed with the logical next step in the development lifecycle.'
+      return 'Unknown phase. Call the await tool to get the current state.'
   }
-}
-
-export function initialize(projectRoot: string, persistence: FilePersistence) {
-  // const PROJECT_ROOT = path.join(path.dirname(__filename), '../..');
-
-  const RELAY_PATH = path.resolve(projectRoot, '.relay');
-  const LOG_FILE = path.resolve(RELAY_PATH, 'debug.log');
-
-  fs.mkdirSync(RELAY_PATH, { recursive: true });
-
-  function log(message: string, data?: any) {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${message} ${data ? JSON.stringify(data, null, 2) : ''}\n`;
-    fs.appendFileSync(LOG_FILE, logEntry);
-  }
-
-  console.log = (...args) => log('INFO:', args.map(arg => JSON.stringify(arg)));
-  console.error = (...args) => log('ERROR:', args.map(arg => JSON.stringify(arg)));
-
-  fs.writeFileSync(LOG_FILE, '');
-
-  console.log('PROJECT_ROOT', projectRoot);
-
-  persistence.setFilePath(path.resolve(projectRoot, '.relay/state.json'))
 }
