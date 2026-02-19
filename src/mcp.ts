@@ -51,7 +51,7 @@ server.registerTool('load_planner_protocol', {
   description: [
     'Initializes the relay and returns the Planner protocol.',
     'Call this FIRST in the planner agent chat to set up the project.',
-    'Returns the strict protocol you must follow: Plan -> Validate -> Wait -> Execute.',
+    'After loading, use `create_task` to populate the task queue.',
   ].join(' '),
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
