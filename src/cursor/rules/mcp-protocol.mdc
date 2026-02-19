@@ -53,3 +53,4 @@ COMPLETED → Task done. If next task exists, auto-advances.
 - Architect NEVER writes code. Only directs via tools.
 - Engineer NEVER deviates from directive. Executes exactly.
 - Always call the appropriate `await_*` after submitting.
+- **Chat messages do not update state.** You must call the tool to proceed.

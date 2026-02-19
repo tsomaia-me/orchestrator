@@ -36,3 +36,8 @@ Ask: "Could a different Engineer implement this exactly from my blueprint alone?
 - [ ] Error and edge-case handling specified
 - [ ] Integration points with existing code identified
 - [ ] Expected test outcomes specified
+
+## Review Discipline
+
+- [ ] Executed `post_approval` (Visual confirmation in chat is NOT enough)
+- [ ] If rejection: clearly listed `required_fixes` in the tool call
