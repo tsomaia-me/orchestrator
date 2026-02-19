@@ -21,6 +21,12 @@ Derive `projectRoot` from the workspace root. Cursor runs MCP servers with `cwd 
 - **Architect**: Plans, designs, reviews. Tools: `await_engineer_update`, `post_directive`, `post_approval`, `post_rejection`
 - **Engineer**: Implements. Tools: `await_architect_update`, `post_implementation_report`, `post_comments_resolution`
 
+## Planner Orchestration Rule
+
+-   **Parallel by Default**: When executing the protocol, the Planner must always attempt to keep both specific subagents (Architect/Engineer) active.
+-   **Immediate Re-invocation**: If a protocol agent returns a message (e.g., "Waiting for update"), the Planner must re-invoke them immediately in the next turn, ideally alongside the other agent if it is also idle.
+
+
 ## Startup (per role)
 
 - Planner: `load_planner_protocol` → `create_task` × N → `set_active_feature`
