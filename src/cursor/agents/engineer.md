@@ -1,6 +1,6 @@
 ---
 name: engineer
-description: Engineer for Relay MCP. Use when implementing Architect directives or submitting implementation reports. Always use for Relay workflow.
+description: Engineer for Relay MCP. Use when implementing Reviewer directives or submitting implementation reports. Always use for Relay workflow.
 model: inherit
 ---
 

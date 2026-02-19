@@ -2,14 +2,14 @@
  * VERIFICATION: Prompt Manager Test
  * Validates:
  * 1. Template Loading (Default vs Override)
- * 2. Inheritance (Architect extends System)
+ * 2. Inheritance (Reviewer extends System)
  * 3. Context Injection (Task, State)
  * 4. Config Injection (User Variables)
  * 5. Security (DoS, Traversal)
  * 6. Model Lookup
  */
 
-import { PromptManager } from '../src/core/prompt-manager';
+import { PromptManager } from '../research/core/prompt-manager';
 import path from 'path';
 import fs from 'fs-extra';
 import assert from 'assert';
@@ -34,12 +34,17 @@ async function verify() {
         // Fallback for environment where templates might be elsewhere
         console.warn('Templates source not found, writing mocks...');
         await fs.writeFile(path.join(testDir, '.relay/prompts/system.njk'), `{% block identity %}SYSTEM{% endblock %} {% block instruction %}INST{% endblock %}`);
-        await fs.writeFile(path.join(testDir, '.relay/prompts/architect.njk'), `{% extends "system.njk" %} {% block identity %}ARCHITECT{% endblock %}`);
+        await fs.writeFile(path.join(testDir, '.relay/prompts/reviewer.njk'), `{% extends "system.njk" %} {% block identity %}REVIEWER{% endblock %}`);
+    }
+
+    // Ensure reviewer.njk exists for this test if not in source (or if copy failed to include it)
+    if (!(await fs.pathExists(path.join(testDir, '.relay/prompts/reviewer.njk')))) {
+        await fs.writeFile(path.join(testDir, '.relay/prompts/reviewer.njk'), `{% extends "system.njk" %} {% block identity %}REVIEWER{% endblock %}`);
     }
 
     // Mock Context
     const context = {
-        role: 'architect',
+        role: 'reviewer',
         state: { status: 'planning' },
         task: { title: 'Test Task' },
         exchange: {},
@@ -48,12 +53,12 @@ async function verify() {
         custom: {}
     };
 
-    console.log('Testing Architect Template Rendering...');
+    console.log('Testing Reviewer Template Rendering...');
     try {
-        const output = await manager.render('architect', context as any);
+        const output = await manager.render('reviewer', context as any);
         // console.log(output);
 
-        if (output.includes('You are the **Architect**') || output.includes('ARCHITECT')) {
+        if (output.includes('You are the **Reviewer**') || output.includes('REVIEWER')) {
             console.log('✅ Standard Rendering Verified.');
         } else {
             throw new Error('Identity Missing');
@@ -66,18 +71,18 @@ async function verify() {
     // Test Override
     console.log('Testing User Override...');
 
-    const architectPath = path.join(testDir, '.relay/prompts/architect.njk');
-    const originalContent = await fs.readFile(architectPath, 'utf-8');
+    const reviewerPath = path.join(testDir, '.relay/prompts/reviewer.njk');
+    const originalContent = await fs.readFile(reviewerPath, 'utf-8');
 
-    // User modifies architect.njk
+    // User modifies reviewer.njk
     const userOverrideContent = `{% extends "system.njk" %}
 {% block identity %}USER_OVERRIDE_VERIFIED{% endblock %}
 `;
 
-    await fs.writeFile(architectPath, userOverrideContent);
+    await fs.writeFile(reviewerPath, userOverrideContent);
 
     try {
-        const output = await manager.render('architect', context as any);
+        const output = await manager.render('reviewer', context as any);
         if (output.includes('USER_OVERRIDE_VERIFIED')) {
             console.log('✅ User Override Verified.');
         } else {
@@ -86,7 +91,7 @@ async function verify() {
         }
     } finally {
         // Restore
-        await fs.writeFile(architectPath, originalContent);
+        await fs.writeFile(reviewerPath, originalContent);
     }
 
     // --- 3. SECURITY TESTS ---
@@ -130,13 +135,13 @@ async function verify() {
     // --- 4. MODEL SPECIFICITY ---
     console.log('\n--- MODEL SPECIFICITY ---');
 
-    // Create architect.gpt-4.njk
-    await fs.writeFile(path.join(testDir, '.relay/prompts/architect.gpt-4.njk'), `GPT-4 SPECIFIC CONTENT`);
+    // Create reviewer.gpt-4.njk
+    await fs.writeFile(path.join(testDir, '.relay/prompts/reviewer.gpt-4.njk'), `GPT-4 SPECIFIC CONTENT`);
 
     // Context with model
     const gptContext = { ...context, env: { ...context.env, model: 'gpt-4' } };
 
-    const gptOutput = await manager.render('architect', gptContext as any);
+    const gptOutput = await manager.render('reviewer', gptContext as any);
     if (gptOutput.includes('GPT-4 SPECIFIC CONTENT')) {
         console.log('✅ Model-Specific Template Verified.');
     } else {

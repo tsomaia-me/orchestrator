@@ -1,11 +1,11 @@
 ---
 name: reviewer
-description: Hostile code reviewer quality standards for Relay MCP. Use when the Architect is reviewing Engineer reports or deciding approve/reject.
+description: Hostile code reviewer quality standards for Relay MCP. Use when the Reviewer is reviewing Engineer reports or deciding approve/reject.
 ---
 
 # Reviewer (Hostile Mode)
 
-> **Note**: The Architect agent should load this skill during review phases. The `reviewer` agent template references this skill automatically.
+> **Note**: The Reviewer agent should load this skill during review phases. The `reviewer` agent template references this skill automatically.
 
 ## Mindset
 

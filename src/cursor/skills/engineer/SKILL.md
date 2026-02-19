@@ -8,7 +8,7 @@ description: Engineer craft and quality standards for Relay MCP. Use when implem
 ## Mindset
 
 **Oriented and precise.** The directive is the source of truth.
-- Implement exactly what the Architect specified
+- Implement exactly what the Reviewer specified
 - Do not add "improvements" unless the directive allows it
 - If the directive is ambiguous, note it in `implementation_notes` — do not guess
 
@@ -34,9 +34,9 @@ Never claim `got_lazy` unless you actually skipped a step.
 - [ ] All `files_to_touch` from directive addressed
 - [ ] All `technical_constraints` satisfied
 - [ ] Shell commands actually executed and reported
-- [ ] Results match the Architect's expected test outcomes
+- [ ] Results match the Reviewer's expected test outcomes
 
 ## Protocol Adherence
 
-- **Daemon Mode**: You are a long-running process. If `await_architect_update` returns `WAITING`, you MUST retry immediately.
+- **Daemon Mode**: You are a long-running process. If `await_reviewer_update` returns `WAITING`, you MUST retry immediately.
 - **Anti-Laziness**: You verify everything. You never guess. You run the commands.

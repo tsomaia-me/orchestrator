@@ -87,7 +87,7 @@ assert(ENGINEER_ACTIVE_PHASES.includes('AWAITING_IMPLEMENTATION_REPORT'), 'Engin
 assert(ENGINEER_ACTIVE_PHASES.includes('AWAITING_COMMENTS_RESOLUTION'), 'Engineer active for AWAITING_COMMENTS_RESOLUTION')
 assert(!ENGINEER_ACTIVE_PHASES.includes('AWAITING_DIRECTIVE'), 'Engineer NOT active for AWAITING_DIRECTIVE')
 
-// ── Test 3: Architect posts directive ─────────────────────────────
+// ── Test 3: Reviewer posts directive ─────────────────────────────
 
 console.log('\n📋 Test 3: Reviewer posts directive')
 
@@ -133,7 +133,7 @@ activeTask = store.getActiveTask()!
 assert(activeTask.phase === 'AWAITING_REVIEW', 'Phase transitioned to AWAITING_REVIEW')
 assert(activeTask.handoff?.type === 'report', 'Handoff contains report')
 
-// ── Test 5: Architect approves → task advances ────────────────────
+// ── Test 5: Reviewer approves → task advances ────────────────────
 
 console.log('\n📋 Test 5: Reviewer approves → task advances')
 

@@ -25,7 +25,7 @@ export const REVIEWER_ACTIVE_PHASES: readonly Phase[] = [
   'COMPLETED',
 ] as const
 
-/** Phases where the Engineer has work to do (await_architect_update returns immediately) */
+/** Phases where the Engineer has work to do (await_reviewer_update returns immediately) */
 export const ENGINEER_ACTIVE_PHASES: readonly Phase[] = [
   'AWAITING_IMPLEMENTATION_REPORT',
   'AWAITING_COMMENTS_RESOLUTION',

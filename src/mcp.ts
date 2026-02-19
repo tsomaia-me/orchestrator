@@ -49,9 +49,9 @@ const AWAIT_TIMEOUT_MS = 30_000
 
 server.registerTool('load_planner_protocol', {
   description: [
-    'Initializes the relay and returns the Head Architect (Planner) protocol.',
+    'Initializes the relay and returns the Planner protocol.',
     'Call this FIRST in the planner agent chat to set up the project.',
-    'After loading, use `create_task` to populate the task queue.',
+    'Returns the strict protocol you must follow: Plan -> Validate -> Wait -> Execute.',
   ].join(' '),
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
@@ -66,7 +66,7 @@ server.registerTool('load_planner_protocol', {
 2. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., \`db-setup\` -> \`auth-api\` -> \`login-ui\`).
 3. **Validate**: Present the proposed list of \`taskId\`s and \`objectives\` to the user. **STOP and wait for manual approval.**
 4. **Execute**: Only after user confirmation, call \`create_task\` for every item in the plan.
-5. **Handoff**: Once all tasks are created, the Architect and Engineer agents can begin. The Architect should call \`await_engineer_update\` and the Engineer should call \`await_architect_update\`.`,
+5. **Handoff**: Once all tasks are created, the Reviewer and Engineer agents can begin. The Reviewer should call \`await_engineer_update\` and the Engineer should call \`await_reviewer_update\`.`,
     }],
   }
 })

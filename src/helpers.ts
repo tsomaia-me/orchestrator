@@ -71,7 +71,7 @@ export function getPhaseDirective(phase: Phase): string {
     case 'AWAITING_IMPLEMENTATION_REPORT':
       return [
         'You are the ENGINEER.',
-        'Read the Architect\'s directive in the handoff.',
+        'Read the Reviewer\'s directive in the handoff.',
         'Implement the requested changes, verify your work with build/test commands.',
         'Submit your report via `post_implementation_report`.',
         'Then call `await_reviewer_update` to wait for the Reviewer\'s review.',
