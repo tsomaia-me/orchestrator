@@ -462,7 +462,9 @@ async function autoChainAwait(
       return {
         content: [{
           type: 'text' as const,
-          text: `${prefixMessage}\n\n${result.content[0].text}`,
+          // If we timed out after posting, we must tell the agent exactly which tool to call next,
+          // rather than "this tool" which they interpret as the post_* tool they just called.
+          text: `${prefixMessage}\n\n⏳ WAITING: The other agent hasn't submitted yet.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${awaitToolName}.]`,
         }],
       }
     }

@@ -143,7 +143,7 @@ export class RelayStore {
     }
 
     const { featureId, taskId } = this.state.currentContext
-    const feature = this.getFeature(featureId)
+    const feature = this.state.features.find(f => f.id === featureId)
 
     if (!feature) {
       throw new Error(`Feature not found: ${featureId}`)
