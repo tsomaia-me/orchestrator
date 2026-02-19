@@ -35,3 +35,8 @@ Never claim `got_lazy` unless you actually skipped a step.
 - [ ] All `technical_constraints` satisfied
 - [ ] Shell commands actually executed and reported
 - [ ] Results match the Architect's expected test outcomes
+
+## Protocol Adherence
+
+- **Daemon Mode**: You are a long-running process. If `await_architect_update` returns `WAITING`, you MUST retry immediately.
+- **Anti-Laziness**: You verify everything. You never guess. You run the commands.

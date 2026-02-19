@@ -62,7 +62,7 @@ export function getPhaseDirective(phase: Phase): string {
   switch (phase) {
     case 'AWAITING_DIRECTIVE':
       return [
-        'You are the ARCHITECT.',
+        'You are the REVIEWER.',
         'Analyze the task spec and design a technical blueprint.',
         'Submit your blueprint via `post_directive`.',
         'Then call `await_engineer_update` to wait for the Engineer\'s implementation report.',
@@ -74,12 +74,12 @@ export function getPhaseDirective(phase: Phase): string {
         'Read the Architect\'s directive in the handoff.',
         'Implement the requested changes, verify your work with build/test commands.',
         'Submit your report via `post_implementation_report`.',
-        'Then call `await_architect_update` to wait for the Architect\'s review.',
+        'Then call `await_reviewer_update` to wait for the Reviewer\'s review.',
       ].join(' ')
 
     case 'AWAITING_REVIEW':
       return [
-        'You are the ARCHITECT.',
+        'You are the REVIEWER.',
         'Review the Engineer\'s report in the handoff.',
         'Verify their claims and check code quality.',
         'Approve via `post_approval` or reject via `post_rejection`.',
@@ -92,7 +92,7 @@ export function getPhaseDirective(phase: Phase): string {
         'Your previous implementation was REJECTED.',
         'Read the rejection feedback in the handoff, implement the required fixes.',
         'Submit your resolution via `post_comments_resolution`.',
-        'Then call `await_architect_update` to wait for re-review.',
+        'Then call `await_reviewer_update` to wait for re-review.',
       ].join(' ')
 
     case 'COMPLETED':

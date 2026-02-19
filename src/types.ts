@@ -9,7 +9,7 @@ import {
   SetActiveFeatureSchema,
 } from './schema'
 
-export type Role = 'architect' | 'engineer'
+export type Role = 'reviewer' | 'engineer'
 
 export type Phase =
   | 'AWAITING_DIRECTIVE'
@@ -18,8 +18,8 @@ export type Phase =
   | 'AWAITING_COMMENTS_RESOLUTION'
   | 'COMPLETED'
 
-/** Phases where the Architect has work to do (await_engineer_update returns immediately) */
-export const ARCHITECT_ACTIVE_PHASES: readonly Phase[] = [
+/** Phases where the Reviewer has work to do (await_engineer_update returns immediately) */
+export const REVIEWER_ACTIVE_PHASES: readonly Phase[] = [
   'AWAITING_DIRECTIVE',
   'AWAITING_REVIEW',
   'COMPLETED',

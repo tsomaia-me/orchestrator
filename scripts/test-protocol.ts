@@ -8,7 +8,7 @@
 import { RelayStore } from '../src/relay-store'
 import { EventListener } from '../src/event-listener'
 import { createEmptyState } from '../src/helpers'
-import { ARCHITECT_ACTIVE_PHASES, ENGINEER_ACTIVE_PHASES, Phase, TaskState } from '../src/types'
+import { REVIEWER_ACTIVE_PHASES, ENGINEER_ACTIVE_PHASES, Phase, TaskState } from '../src/types'
 import { FilePersistence } from '../src/persistence/file-persistence'
 import fs from 'fs'
 import path from 'path'
@@ -79,9 +79,9 @@ assert(activeTask!.phase === 'AWAITING_DIRECTIVE', 'Initial phase is AWAITING_DI
 
 console.log('\n📋 Test 2: Role-phase mapping')
 
-assert(ARCHITECT_ACTIVE_PHASES.includes('AWAITING_DIRECTIVE'), 'Architect active for AWAITING_DIRECTIVE')
-assert(ARCHITECT_ACTIVE_PHASES.includes('AWAITING_REVIEW'), 'Architect active for AWAITING_REVIEW')
-assert(!ARCHITECT_ACTIVE_PHASES.includes('AWAITING_IMPLEMENTATION_REPORT'), 'Architect NOT active for AWAITING_IMPLEMENTATION_REPORT')
+assert(REVIEWER_ACTIVE_PHASES.includes('AWAITING_DIRECTIVE'), 'Reviewer active for AWAITING_DIRECTIVE')
+assert(REVIEWER_ACTIVE_PHASES.includes('AWAITING_REVIEW'), 'Reviewer active for AWAITING_REVIEW')
+assert(!REVIEWER_ACTIVE_PHASES.includes('AWAITING_IMPLEMENTATION_REPORT'), 'Reviewer NOT active for AWAITING_IMPLEMENTATION_REPORT')
 
 assert(ENGINEER_ACTIVE_PHASES.includes('AWAITING_IMPLEMENTATION_REPORT'), 'Engineer active for AWAITING_IMPLEMENTATION_REPORT')
 assert(ENGINEER_ACTIVE_PHASES.includes('AWAITING_COMMENTS_RESOLUTION'), 'Engineer active for AWAITING_COMMENTS_RESOLUTION')
@@ -89,7 +89,7 @@ assert(!ENGINEER_ACTIVE_PHASES.includes('AWAITING_DIRECTIVE'), 'Engineer NOT act
 
 // ── Test 3: Architect posts directive ─────────────────────────────
 
-console.log('\n📋 Test 3: post_directive')
+console.log('\n📋 Test 3: Reviewer posts directive')
 
 store.updateActiveTask(prev => ({
     ...prev,
@@ -135,7 +135,7 @@ assert(activeTask.handoff?.type === 'report', 'Handoff contains report')
 
 // ── Test 5: Architect approves → task advances ────────────────────
 
-console.log('\n📋 Test 5: post_approval and task advancement')
+console.log('\n📋 Test 5: Reviewer approves → task advances')
 
 // Store approval handoff
 store.updateActiveTask(prev => ({
@@ -151,7 +151,7 @@ store.updateActiveTask(prev => ({
             verification_critique: 'Build check is sufficient for this task.',
             constraint_compliance: 'all_technical_constraints_strictly_met',
             constraint_justification: 'RS256 is used throughout as required.',
-            responsibility_ownership: 'I_the_architect_am_responsible_for_quality',
+            responsibility_ownership: 'I_the_reviewer_am_responsible_for_quality',
         },
     },
 }))
@@ -183,7 +183,7 @@ assert(noNext === null, 'getNextTask returns null when no more tasks')
 
 console.log('\n📋 Test 7: Rejection flow')
 
-// Architect directs
+// Reviewer directs
 store.updateActiveTask(prev => ({
     ...prev,
     phase: 'AWAITING_IMPLEMENTATION_REPORT',
@@ -208,7 +208,7 @@ store.updateActiveTask(prev => ({
     },
 }))
 
-// Architect rejects
+// Reviewer rejects
 store.updateActiveTask(prev => ({
     ...prev,
     phase: 'AWAITING_COMMENTS_RESOLUTION',

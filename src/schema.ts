@@ -81,7 +81,7 @@ export const ApprovalSchema = z.object({
   ),
 
   responsibility_ownership: z.enum([
-    'I_the_architect_am_responsible_for_quality',
+    'I_the_reviewer_am_responsible_for_quality',
     'dismiss'
   ]).describe('Formal assumption of risk for the code entering the codebase.'),
 })

@@ -12,7 +12,7 @@ import {
 } from './schema'
 import { createEmptyState, getPhaseDirective, initialize } from './helpers'
 import {
-  ARCHITECT_ACTIVE_PHASES,
+  REVIEWER_ACTIVE_PHASES,
   Approval,
   Briefing,
   CreateTask,
@@ -61,7 +61,7 @@ server.registerTool('load_planner_protocol', {
   return {
     content: [{
       type: 'text' as const,
-      text: `## Head Architect (Planner) Protocol
+      text: `## Head Planner Protocol
 1. **Scope**: Analyze the user's high-level feature request. Identify dependencies and the "Definition of Done."
 2. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., \`db-setup\` -> \`auth-api\` -> \`login-ui\`).
 3. **Validate**: Present the proposed list of \`taskId\`s and \`objectives\` to the user. **STOP and wait for manual approval.**
@@ -71,10 +71,10 @@ server.registerTool('load_planner_protocol', {
   }
 })
 
-server.registerTool('load_architect_protocol', {
+server.registerTool('load_reviewer_protocol', {
   description: [
-    'Initializes the relay and returns the Architect protocol.',
-    'Call this FIRST in the architect agent chat.',
+    'Initializes the relay and returns the Reviewer protocol.',
+    'Call this FIRST in the reviewer agent chat.',
     'After loading, call `await_engineer_update` to receive your first task.',
   ].join(' '),
   inputSchema: LoadProtocolSchema,
@@ -85,9 +85,9 @@ server.registerTool('load_architect_protocol', {
   return {
     content: [{
       type: 'text' as const,
-      text: `## Architect Protocol
+      text: `## Reviewer Protocol
 
-You are the ARCHITECT. Your tools are: \`await_engineer_update\`, \`post_directive\`, \`post_approval\`, \`post_rejection\`.
+You are the REVIEWER. Your tools are: \`await_engineer_update\`, \`post_directive\`, \`post_approval\`, \`post_rejection\`.
 
 ### Workflow
 1. **Start**: Call \`await_engineer_update\` to receive the current task spec or the Engineer's latest report.
@@ -98,7 +98,7 @@ You are the ARCHITECT. Your tools are: \`await_engineer_update\`, \`post_directi
 6. **Loop**: After approval/rejection, call \`await_engineer_update\` to continue with the next task or iteration.
 
 ### Rules
-- NEVER call \`await_architect_update\` — that is the Engineer's tool.
+- NEVER call \`await_reviewer_update\` — that is the Engineer's tool.
 - ALWAYS call \`await_engineer_update\` after submitting a directive, approval, or rejection.
 - Review with zero-trust: verify every claim the Engineer makes.`,
     }],
@@ -109,7 +109,7 @@ server.registerTool('load_engineer_protocol', {
   description: [
     'Initializes the relay and returns the Engineer protocol.',
     'Call this FIRST in the engineer agent chat.',
-    'After loading, call `await_architect_update` to receive your first directive.',
+    'After loading, call `await_reviewer_update` to receive your first directive.',
   ].join(' '),
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
@@ -121,20 +121,20 @@ server.registerTool('load_engineer_protocol', {
       type: 'text' as const,
       text: `## Engineer Protocol
 
-You are the ENGINEER. Your tools are: \`await_architect_update\`, \`post_implementation_report\`, \`post_comments_resolution\`.
+You are the ENGINEER. Your tools are: \`await_reviewer_update\`, \`post_implementation_report\`, \`post_comments_resolution\`.
 
 ### Workflow
-1. **Start**: Call \`await_architect_update\` to receive the Architect's directive.
+1. **Start**: Call \`await_reviewer_update\` to receive the Reviewer's directive.
 2. **Implement**: Code the changes exactly as specified in the directive.
 3. **Verify**: Run build, tests, and linting locally. Record the exact commands you ran.
 4. **Submit**: Call \`post_implementation_report\` with your changes and verification results.
-5. **Wait**: Call \`await_architect_update\` to receive the review outcome.
+5. **Wait**: Call \`await_reviewer_update\` to receive the review outcome.
 6. **If rejected**: Read the required fixes, implement them, then call \`post_comments_resolution\`.
-7. **Loop**: After submitting, always call \`await_architect_update\` for the next step.
+7. **Loop**: After submitting, always call \`await_reviewer_update\` for the next step.
 
 ### Rules
-- NEVER call \`await_engineer_update\` — that is the Architect's tool.
-- ALWAYS call \`await_architect_update\` after submitting a report or resolution.
+- NEVER call \`await_engineer_update\` — that is the Reviewer's tool.
+- ALWAYS call \`await_reviewer_update\` after submitting a report or resolution.
 - You MUST provide the exact shell commands you ran in your report.
 - Take responsibility for the quality of your code.`,
     }],
@@ -186,20 +186,20 @@ server.registerTool('set_active_feature', {
 
 server.registerTool('await_engineer_update', {
   description: [
-    'ARCHITECT ONLY. Call this to receive your next assignment or wait for the Engineer.',
-    'Returns immediately if the current phase needs the Architect (AWAITING_DIRECTIVE, AWAITING_REVIEW).',
+    'REVIEWER ONLY. Call this to receive your next assignment or wait for the Engineer.',
+    'Returns immediately if the current phase needs the Reviewer (AWAITING_DIRECTIVE, AWAITING_REVIEW).',
     'Blocks up to 30 seconds if waiting for the Engineer to submit.',
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
-  return await handleAwait(ARCHITECT_ACTIVE_PHASES)
+  return await handleAwait(REVIEWER_ACTIVE_PHASES)
 })
 
-server.registerTool('await_architect_update', {
+server.registerTool('await_reviewer_update', {
   description: [
-    'ENGINEER ONLY. Call this to receive your next assignment or wait for the Architect.',
+    'ENGINEER ONLY. Call this to receive your next assignment or wait for the Reviewer.',
     'Returns immediately if the current phase needs the Engineer (AWAITING_IMPLEMENTATION_REPORT, AWAITING_COMMENTS_RESOLUTION).',
-    'Blocks up to 30 seconds if waiting for the Architect to submit.',
+    'Blocks up to 30 seconds if waiting for the Reviewer to submit.',
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
@@ -210,7 +210,7 @@ server.registerTool('await_architect_update', {
 
 server.registerTool('post_directive', {
   description: [
-    'ARCHITECT ONLY. Submit your technical blueprint for the Engineer.',
+    'REVIEWER ONLY. Submit your technical blueprint for the Engineer.',
     'Only callable when phase is AWAITING_DIRECTIVE.',
     'After submitting, call `await_engineer_update` to wait for the Engineer\'s report.',
   ].join(' '),
@@ -244,7 +244,7 @@ server.registerTool('post_implementation_report', {
   description: [
     'ENGINEER ONLY. Submit your implementation report.',
     'Callable when phase is AWAITING_IMPLEMENTATION_REPORT.',
-    'After submitting, call `await_architect_update` to wait for the review.',
+    'After submitting, call `await_reviewer_update` to wait for the review.',
   ].join(' '),
   inputSchema: EngineerReportSchema,
 }, (data: EngineerReport) => {
@@ -267,16 +267,16 @@ server.registerTool('post_implementation_report', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'Report submitted. Phase: AWAITING_REVIEW. Call `await_architect_update` to wait for the Architect\'s review.',
+      text: 'Report submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for the Reviewer\'s review.',
     }],
   }
 })
 
 server.registerTool('post_comments_resolution', {
   description: [
-    'ENGINEER ONLY. Submit your resolution addressing the Architect\'s rejection.',
+    'ENGINEER ONLY. Submit your resolution addressing the Reviewer\'s rejection.',
     'Callable when phase is AWAITING_COMMENTS_RESOLUTION.',
-    'After submitting, call `await_architect_update` to wait for re-review.',
+    'After submitting, call `await_reviewer_update` to wait for re-review.',
   ].join(' '),
   inputSchema: EngineerReportSchema,
 }, (data: EngineerReport) => {
@@ -299,14 +299,14 @@ server.registerTool('post_comments_resolution', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'Resolution submitted. Phase: AWAITING_REVIEW. Call `await_architect_update` to wait for re-review.',
+      text: 'Resolution submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for re-review.',
     }],
   }
 })
 
 server.registerTool('post_approval', {
   description: [
-    'ARCHITECT ONLY. Approve the Engineer\'s work.',
+    'REVIEWER ONLY. Approve the Engineer\'s work.',
     'Only callable when phase is AWAITING_REVIEW.',
     'Marks the current task COMPLETED and advances to the next task if one exists.',
     'After approving, call `await_engineer_update` to pick up the next task.',
@@ -351,7 +351,7 @@ server.registerTool('post_approval', {
 
 server.registerTool('post_rejection', {
   description: [
-    'ARCHITECT ONLY. Reject the Engineer\'s work with required fixes.',
+    'REVIEWER ONLY. Reject the Engineer\'s work with required fixes.',
     'Only callable when phase is AWAITING_REVIEW.',
     'After rejecting, call `await_engineer_update` to wait for the Engineer\'s resolution.',
   ].join(' '),
