@@ -205,7 +205,7 @@ server.registerTool('await_engineer_update', {
   }
   awaitInFlight.set('reviewer', true)
   try {
-    return await handleAwait(REVIEWER_ACTIVE_PHASES)
+    return await handleAwait(REVIEWER_ACTIVE_PHASES, 'await_engineer_update')
   } finally {
     awaitInFlight.set('reviewer', false)
   }
@@ -229,7 +229,7 @@ server.registerTool('await_reviewer_update', {
   }
   awaitInFlight.set('engineer', true)
   try {
-    return await handleAwait(ENGINEER_ACTIVE_PHASES)
+    return await handleAwait(ENGINEER_ACTIVE_PHASES, 'await_reviewer_update')
   } finally {
     awaitInFlight.set('engineer', false)
   }
@@ -420,7 +420,7 @@ async function autoChainAwait(
 
   awaitInFlight.set(role, true)
   try {
-    const result = await handleAwait(activePhases)
+    const result = await handleAwait(activePhases, awaitToolName)
 
     // Check if handleAwait timed out (returns the WAITING message)
     if (result.content[0].text.includes('⏳ WAITING:')) {
@@ -451,7 +451,7 @@ async function autoChainAwait(
  * If the current phase is in the caller's active phases, return immediately.
  * Otherwise, block up to AWAIT_TIMEOUT_MS waiting for a relevant event.
  */
-async function handleAwait(activePhases: readonly Phase[]) {
+async function handleAwait(activePhases: readonly Phase[], thisToolName: string) {
   let task = store.getActiveTask()
 
   // If no active task, wait for one to be set
@@ -463,7 +463,7 @@ async function handleAwait(activePhases: readonly Phase[]) {
       return {
         content: [{
           type: 'text' as const,
-          text: '⏳ WAITING: No active task yet. Create tasks with `create_task` first, then call this tool again.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN.]',
+          text: `⏳ WAITING: No active task yet. Create tasks with \`create_task\` first, then call this tool again.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${thisToolName}.]`,
         }],
       }
     }
@@ -481,7 +481,7 @@ async function handleAwait(activePhases: readonly Phase[]) {
       return {
         content: [{
           type: 'text' as const,
-          text: `⏳ WAITING: The other agent hasn't submitted yet. Current phase: ${phase}. Call this tool again to keep waiting.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN.]`,
+          text: `⏳ WAITING: The other agent hasn't submitted yet. Current phase: ${phase}. Call this tool again to keep waiting.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${thisToolName}.]`,
         }],
       }
     }
