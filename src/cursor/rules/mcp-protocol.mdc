@@ -1,0 +1,55 @@
+---
+description: Relay MCP protocol, tools, and phase machine. Apply when coordinating Architect/Engineer workflow.
+alwaysApply: false
+---
+
+# Relay MCP Protocol
+
+## Initialization
+
+Every `load_*_protocol` call **requires** `projectRoot`:
+```
+load_architect_protocol({ projectRoot: "/absolute/path/to/project" })
+load_engineer_protocol({ projectRoot: "/absolute/path/to/project" })
+load_planner_protocol({ projectRoot: "/absolute/path/to/project" })
+```
+Derive `projectRoot` from the workspace root. Cursor runs MCP servers with `cwd = ~/`, so this parameter is the **only** way to initialize correctly.
+
+## Role Mapping
+
+- **Planner**: Decomposes features. Tools: `create_task`, `set_active_feature`
+- **Architect**: Plans, designs, reviews. Tools: `await_engineer_update`, `post_directive`, `post_approval`, `post_rejection`
+- **Engineer**: Implements. Tools: `await_architect_update`, `post_implementation_report`, `post_comments_resolution`
+
+## Startup (per role)
+
+- Planner: `load_planner_protocol` → `create_task` × N → `set_active_feature`
+- Architect: `load_architect_protocol` → `await_engineer_update`
+- Engineer: `load_engineer_protocol` → `await_architect_update`
+
+## Phase Machine
+
+```
+AWAITING_DIRECTIVE → Architect posts directive
+AWAITING_IMPLEMENTATION_REPORT → Engineer implements, posts report
+AWAITING_REVIEW → Architect reviews → post_approval or post_rejection
+AWAITING_COMMENTS_RESOLUTION → Engineer fixes rejection, posts resolution
+COMPLETED → Task done. If next task exists, auto-advances.
+```
+
+## After Approval
+
+- If response mentions **next task**: call `await_engineer_update` (Architect) or `await_architect_update` (Engineer) to pick it up.
+- If response says **"All done!"**: feature is finished. Stop.
+
+## Error Recovery
+
+- `⏳ WAITING` response: the other agent hasn't submitted yet. Call `await_*` again.
+- Phase mismatch error: call your `await_*` tool to check current state.
+- Other agent not loaded yet: wait — they'll catch up.
+
+## Constraints
+
+- Architect NEVER writes code. Only directs via tools.
+- Engineer NEVER deviates from directive. Executes exactly.
+- Always call the appropriate `await_*` after submitting.

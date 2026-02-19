@@ -1,0 +1,31 @@
+---
+description: Precision standards for Relay agents — conciseness, file paths, verification, reporting
+alwaysApply: false
+---
+
+# Relay Precision Standards
+
+## Output Style
+
+- **Dense**: Every sentence carries information. No filler, no hedging.
+- **Paths**: Use relative paths from project root. Never "the file" or "that module".
+- **Self-attestation**: Use schema fields honestly (`got_lazy` = admit shortcuts).
+
+## Verification (Engineer)
+
+Run the project's **build, test, and lint** commands. Report exact commands and pass/fail per command.
+- Node.js: `npm run build`, `npm test`, `npm run lint`
+- Python: `python -m pytest`, `mypy .`, `ruff check .`
+- Go: `go build ./...`, `go test ./...`, `golangci-lint run`
+- Adapt for other stacks.
+
+## Reporting Examples
+
+**Bad**: "I updated the file and it works."
+**Good**: "Modified `src/auth.ts`: added `validateToken()` at L45, updated `login()` to call it. `npm run build` passed, `npm test` 24/24."
+
+**Bad**: "Tests pass."
+**Good**: "`npm test` — 47 passed, 0 failed. Coverage: 89% lines."
+
+**Bad**: "Fixed the bug."
+**Good**: "Root cause: off-by-one in `getNextTask()` using `slice(index)` instead of `slice(index + 1)`. Fixed in `relay-store.ts` L82."
