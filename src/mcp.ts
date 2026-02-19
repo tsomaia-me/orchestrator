@@ -34,7 +34,7 @@ import { EventListener } from './event-listener'
 
 // ── Server setup ──────────────────────────────────────────────────
 
-const server = new McpServer({ name: 'relay-orchestrator', version: '6.0.0' })
+const server = new McpServer({ name: 'relay-orchestrator', version: '6.2.0' })
 
 const persistence = new FilePersistence('.relay/state.json')
 const store = new RelayStore({
@@ -173,6 +173,11 @@ server.registerTool('set_active_feature', {
   store.setActiveFeature(data.featureId)
   const task = store.getActiveTask()
   console.log('set_active_feature', data.featureId, task?.taskId)
+
+  // Wake up any agents blocked on "no active task"
+  if (task) {
+    eventBus.trigger('set_active_task', task)
+  }
 
   return {
     content: [{
@@ -329,10 +334,13 @@ server.registerTool('post_approval', {
 
   eventBus.trigger(
     `${task.featureId}.${task.taskId}.post_approval`,
-    { ...task, phase: 'COMPLETED', handoff: { type: 'approval', data } },
+    { ...task, phase: 'COMPLETED' as const, handoff: { type: 'approval' as const, data } },
   )
 
+  // Wake up agents for the next task immediately
   if (nextTask) {
+    eventBus.trigger('set_active_task', nextTask)
+
     return {
       content: [{
         type: 'text' as const,
@@ -542,7 +550,7 @@ function buildBriefing(task: TaskState) {
 
 const transport = new StdioServerTransport()
 server.connect(transport).then(() => {
-  console.log('Relay MCP Server running (v6.1.0)')
+  console.log('Relay MCP Server running (v6.2.0)')
 }).catch(err => {
   console.error('Failed to start Relay MCP Server', err)
   process.exit(1)

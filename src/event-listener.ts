@@ -24,20 +24,6 @@ export class EventListener {
     }
   }
 
-  /**
-   * Returns a Promise that resolves when 'event' is triggered.
-   * Used for one-shot waits (auto-unregisters after first fire).
-   */
-  listen(event: TaskEventName): Promise<TaskState> {
-    return new Promise(resolve => {
-      const handler: TaskEventListener = (payload: TaskState) => {
-        this.off(event, handler)
-        resolve(payload)
-      }
-      this.on(event, handler)
-    })
-  }
-
   trigger(event: TaskEventName, payload: TaskState): void {
     const handlers = this.listeners.get(event)
     if (handlers) {

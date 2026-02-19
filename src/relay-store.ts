@@ -40,7 +40,8 @@ export class RelayStore {
   // ── Feature operations ──────────────────────────────────────────
 
   getFeature(featureId: FeatureId): FeatureState | null {
-    return this.state.features.find(f => f.id === featureId) ?? null
+    const feature = this.state.features.find(f => f.id === featureId)
+    return feature ? { ...feature, tasks: [...feature.tasks] } : null
   }
 
   // ── Task operations ─────────────────────────────────────────────
@@ -112,11 +113,15 @@ export class RelayStore {
   }
 
   addTask(task: TaskState): void {
-    let feature = this.getFeature(task.featureId)
+    let feature = this.state.features.find(f => f.id === task.featureId)
 
     if (!feature) {
       feature = { id: task.featureId, tasks: [] }
       this.state.features.push(feature)
+    }
+
+    if (feature.tasks.some(t => t.taskId === task.taskId)) {
+      throw new Error(`Duplicate taskId: ${task.featureId}/${task.taskId}`)
     }
 
     feature.tasks.push(task)

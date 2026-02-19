@@ -1,6 +1,6 @@
 ---
 description: Relay MCP protocol, tools, and phase machine. Apply when coordinating Reviewer/Engineer workflow.
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Relay MCP Protocol
@@ -29,7 +29,7 @@ Derive `projectRoot` from the workspace root. Cursor runs MCP servers with `cwd 
 
 ## Startup (per role)
 
-- Planner: `load_planner_protocol` → `create_task` × N → `set_active_feature`
+- Planner: `load_planner_protocol` → Scope → Decompose → **Validate (STOP, wait for user approval)** → `create_task` × N → `set_active_feature`
 - Reviewer: `load_reviewer_protocol` → `await_engineer_update`
 - Engineer: `load_engineer_protocol` → `await_reviewer_update`
 

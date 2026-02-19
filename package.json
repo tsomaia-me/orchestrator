@@ -2,7 +2,7 @@
   "name": "orchestrator-relay",
   "version": "2.0.12",
   "description": "Agent-to-agent coordination relay for autonomous task execution",
-  "main": "dist/v2/mcp.js",
+  "main": "dist/mcp.js",
   "type": "commonjs",
   "bin": {
     "relay": "./dist/bin/relay"
@@ -17,9 +17,6 @@
   },
   "files": [
     "dist/",
-    "bin/",
-    "prompts/",
-    "templates/",
     "README.md"
   ],
   "keywords": [
@@ -33,20 +30,13 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@types/nunjucks": "^3.2.6",
-    "chalk": "^4.1.2",
     "commander": "^14.0.3",
     "fs-extra": "^11.3.3",
-    "inquirer": "^8.2.6",
-    "nunjucks": "^3.2.4",
-    "proper-lockfile": "^4.1.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
-    "@types/inquirer": "^9.0.7",
     "@types/node": "^20.11.0",
-    "@types/proper-lockfile": "^4.1.4",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },

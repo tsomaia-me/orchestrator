@@ -38,5 +38,5 @@ Never claim `got_lazy` unless you actually skipped a step.
 
 ## Protocol Adherence
 
-- **Daemon Mode**: You are a long-running process. If `await_reviewer_update` returns `WAITING`, you MUST retry immediately.
+- **Daemon Mode**: You are a long-running process. If `await_reviewer_update` returns `WAITING`, you MUST retry immediately. **NEVER output a status update. ONLY call the tool.**
 - **Anti-Laziness**: You verify everything. You never guess. You run the commands.

@@ -23,7 +23,9 @@ export class FilePersistence implements StatePersistence {
     const dir = path.dirname(this.filePath)
     fs.mkdirSync(dir, { recursive: true })
     const data = JSON.stringify(state, null, 2)
-    fs.writeFileSync(this.filePath, data, 'utf-8')
+    const tmp = this.filePath + '.tmp'
+    fs.writeFileSync(tmp, data, 'utf-8')
+    fs.renameSync(tmp, this.filePath)
   }
 
   load(): RelayState {
