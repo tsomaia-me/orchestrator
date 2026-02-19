@@ -542,7 +542,7 @@ function buildBriefing(task: TaskState) {
 
 const transport = new StdioServerTransport()
 server.connect(transport).then(() => {
-  console.log('Relay MCP Server running (v6.0.0)')
+  console.log('Relay MCP Server running (v6.1.0)')
 }).catch(err => {
   console.error('Failed to start Relay MCP Server', err)
   process.exit(1)

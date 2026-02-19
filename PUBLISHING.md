@@ -22,7 +22,7 @@ npm run build
 ## 3. Verify
 Test the binary locally.
 ```bash
-./bin/cli.js --help
+./bin/relay --help
 ```
 
 ## 4. Publish
