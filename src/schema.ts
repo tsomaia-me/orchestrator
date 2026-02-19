@@ -14,11 +14,7 @@ export const CreateTaskSchema = z.object({
   }),
 })
 
-export const DirectiveSchema = z.object({
-  blueprint: z.string().describe('The high-level technical design and logic flow for this task.'),
-  files_to_touch: z.array(z.string()).describe('List of relative file paths that the Engineer is permitted to modify.'),
-  technical_constraints: z.array(z.string()).describe('Specific implementation rules, e.g., "Use early returns", "No external utils".'),
-})
+
 
 export const CommandStatusSchema = z.object({
   checkId: z.string().describe('Identifier for the check, e.g., "build", "tests", "linter"'),

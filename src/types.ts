@@ -2,7 +2,6 @@ import { z } from 'zod'
 import {
   ApprovalSchema,
   CreateTaskSchema,
-  DirectiveSchema,
   EngineerReportSchema,
   LoadProtocolSchema,
   RejectionSchema,
@@ -12,7 +11,6 @@ import {
 export type Role = 'reviewer' | 'engineer'
 
 export type Phase =
-  | 'AWAITING_DIRECTIVE'
   | 'AWAITING_IMPLEMENTATION_REPORT'
   | 'AWAITING_REVIEW'
   | 'AWAITING_COMMENTS_RESOLUTION'
@@ -20,7 +18,6 @@ export type Phase =
 
 /** Phases where the Reviewer has work to do (await_engineer_update returns immediately) */
 export const REVIEWER_ACTIVE_PHASES: readonly Phase[] = [
-  'AWAITING_DIRECTIVE',
   'AWAITING_REVIEW',
   'COMPLETED',
 ] as const
@@ -59,14 +56,12 @@ export type RelayState = {
 
 export type LoadProtocol = z.infer<typeof LoadProtocolSchema>
 export type CreateTask = z.infer<typeof CreateTaskSchema>
-export type Directive = z.infer<typeof DirectiveSchema>
 export type EngineerReport = z.infer<typeof EngineerReportSchema>
 export type Approval = z.infer<typeof ApprovalSchema>
 export type Rejection = z.infer<typeof RejectionSchema>
 export type SetActiveFeature = z.infer<typeof SetActiveFeatureSchema>
 
 export type Handoff =
-  | { type: 'directive'; data: Directive }
   | { type: 'report'; data: EngineerReport }
   | { type: 'approval'; data: Approval }
   | { type: 'rejection'; data: Rejection };

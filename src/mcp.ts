@@ -4,7 +4,6 @@ import {
   ApprovalSchema,
   AwaitUpdateSchema,
   CreateTaskSchema,
-  DirectiveSchema,
   EngineerReportSchema,
   LoadProtocolSchema,
   RejectionSchema,
@@ -16,7 +15,6 @@ import {
   Approval,
   Briefing,
   CreateTask,
-  Directive,
   ENGINEER_ACTIVE_PHASES,
   EngineerReport,
   Handoff,
@@ -90,19 +88,17 @@ server.registerTool('load_reviewer_protocol', {
       type: 'text' as const,
       text: `## Reviewer Protocol
 
-You are the REVIEWER. Your tools are: \`await_engineer_update\`, \`post_directive\`, \`post_approval\`, \`post_rejection\`.
+You are the REVIEWER. Your tools are: \`await_engineer_update\`, \`post_approval\`, \`post_rejection\`.
 
 ### Workflow
 1. **Start**: Call \`await_engineer_update\` to receive the current task spec or the Engineer's latest report.
-2. **Design** (if AWAITING_DIRECTIVE): Analyze the spec, create a technical blueprint with file paths and logic.
-3. **Submit**: Call \`post_directive\` with your blueprint, then call \`await_engineer_update\` to wait for the Engineer.
-4. **Review** (if AWAITING_REVIEW): Verify the Engineer's report meets all constraints.
-5. **Decide**: Call \`post_approval\` if satisfactory, or \`post_rejection\` with required fixes.
-6. **Loop**: After approval/rejection, call \`await_engineer_update\` to continue with the next task or iteration.
+2. **Review** (if AWAITING_REVIEW): Verify the Engineer's report meets all constraints.
+3. **Decide**: Call \`post_approval\` if satisfactory, or \`post_rejection\` with required fixes. The tool will automatically wait for the next payload.
+4. **Loop**: Repeat.
 
 ### Rules
 - NEVER call \`await_reviewer_update\` — that is the Engineer's tool.
-- ALWAYS call \`await_engineer_update\` after submitting a directive, approval, or rejection.
+- ALWAYS call \`await_engineer_update\` after submitting an approval or rejection.
 - Review with zero-trust: verify every claim the Engineer makes.`,
     }],
   }
@@ -112,7 +108,7 @@ server.registerTool('load_engineer_protocol', {
   description: [
     'Initializes the relay and returns the Engineer protocol.',
     'Call this FIRST in the engineer agent chat.',
-    'After loading, call `await_reviewer_update` to receive your first directive.',
+    'After loading, call `await_reviewer_update` to receive your first task spec.',
   ].join(' '),
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
@@ -127,13 +123,12 @@ server.registerTool('load_engineer_protocol', {
 You are the ENGINEER. Your tools are: \`await_reviewer_update\`, \`post_implementation_report\`, \`post_comments_resolution\`.
 
 ### Workflow
-1. **Start**: Call \`await_reviewer_update\` to receive the Reviewer's directive.
-2. **Implement**: Code the changes exactly as specified in the directive.
+1. **Start**: Call \`await_reviewer_update\` to receive the task spec.
+2. **Implement**: Code the changes exactly as specified in the task spec.
 3. **Verify**: Run build, tests, and linting locally. Record the exact commands you ran.
-4. **Submit**: Call \`post_implementation_report\` with your changes and verification results.
-5. **Wait**: Call \`await_reviewer_update\` to receive the review outcome.
-6. **If rejected**: Read the required fixes, implement them, then call \`post_comments_resolution\`.
-7. **Loop**: After submitting, always call \`await_reviewer_update\` for the next step.
+4. **Submit**: Call \`post_implementation_report\` with your changes and verification results. The tool will automatically wait for the Reviewer.
+5. **Review**: Wait for review. If rejected, read the required fixes, implement them, then call \`post_comments_resolution\`. The tool will automatically wait for re-review.
+6. **Loop**: Repeat.
 
 ### Rules
 - NEVER call \`await_engineer_update\` — that is the Reviewer's tool.
@@ -156,7 +151,7 @@ server.registerTool('create_task', {
   store.addTask({
     featureId,
     taskId,
-    phase: 'AWAITING_DIRECTIVE',
+    phase: 'AWAITING_IMPLEMENTATION_REPORT',
     spec,
     handoff: null,
   })
@@ -164,7 +159,7 @@ server.registerTool('create_task', {
   return {
     content: [{
       type: 'text' as const,
-      text: `Task created: ${featureId}/${taskId}. Phase: AWAITING_DIRECTIVE.`,
+      text: `Task created: ${featureId}/${taskId}. Phase: AWAITING_IMPLEMENTATION_REPORT.`,
     }],
   }
 })
@@ -195,7 +190,7 @@ server.registerTool('set_active_feature', {
 server.registerTool('await_engineer_update', {
   description: [
     'REVIEWER ONLY. Call this to receive your next assignment or wait for the Engineer.',
-    'Returns immediately if the current phase needs the Reviewer (AWAITING_DIRECTIVE, AWAITING_REVIEW).',
+    'Returns immediately if the current phase needs the Reviewer (AWAITING_REVIEW).',
     'Blocks up to 60 seconds if waiting for the Engineer to submit.',
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
@@ -242,37 +237,7 @@ server.registerTool('await_reviewer_update', {
 
 // ── Action tools ──────────────────────────────────────────────────
 
-server.registerTool('post_directive', {
-  description: [
-    'REVIEWER ONLY. Submit your technical blueprint for the Engineer.',
-    'Only callable when phase is AWAITING_DIRECTIVE.',
-    'After submitting, automatically waits for the Engineer\'s report and returns it.',
-  ].join(' '),
-  inputSchema: DirectiveSchema,
-}, async (data: Directive) => {
-  const task = requireActiveTask()
-  requirePhase(task, 'AWAITING_DIRECTIVE')
 
-  console.log('post_directive', task.featureId, task.taskId)
-
-  store.updateActiveTask(prev => ({
-    ...prev,
-    phase: 'AWAITING_IMPLEMENTATION_REPORT',
-    handoff: { type: 'directive', data },
-  }))
-
-  eventBus.trigger(
-    `${task.featureId}.${task.taskId}.post_directive`,
-    store.getActiveTask()!,
-  )
-
-  return autoChainAwait(
-    'Directive submitted. Phase: AWAITING_IMPLEMENTATION_REPORT.',
-    'reviewer',
-    REVIEWER_ACTIVE_PHASES,
-    'await_engineer_update',
-  )
-})
 
 server.registerTool('post_implementation_report', {
   description: [
@@ -535,8 +500,6 @@ async function handleAwait(activePhases: readonly Phase[]) {
 function getTransitionEvents(featureId: string, taskId: string, phase: Phase): TaskEventName[] {
   const prefix = `${featureId}.${taskId}` as const
   switch (phase) {
-    case 'AWAITING_DIRECTIVE':
-      return [`${prefix}.post_directive`]
     case 'AWAITING_IMPLEMENTATION_REPORT':
       return [`${prefix}.post_implementation_report`]
     case 'AWAITING_REVIEW':

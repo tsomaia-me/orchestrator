@@ -73,21 +73,12 @@ export function createEmptyState(): RelayState {
 
 export function getPhaseDirective(phase: Phase): string {
   switch (phase) {
-    case 'AWAITING_DIRECTIVE':
-      return [
-        'You are the REVIEWER.',
-        'Analyze the task spec and design a technical blueprint.',
-        'Submit your blueprint via `post_directive`.',
-        'Then call `await_engineer_update` to wait for the Engineer\'s implementation report.',
-      ].join(' ')
-
     case 'AWAITING_IMPLEMENTATION_REPORT':
       return [
         'You are the ENGINEER.',
-        'Read the Reviewer\'s directive in the handoff.',
+        'Read the task spec.',
         'Implement the requested changes, verify your work with build/test commands.',
         'Submit your report via `post_implementation_report`.',
-        'Then call `await_reviewer_update` to wait for the Reviewer\'s review.',
       ].join(' ')
 
     case 'AWAITING_REVIEW':

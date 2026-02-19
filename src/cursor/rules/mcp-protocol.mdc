@@ -18,7 +18,7 @@ Derive `projectRoot` from the workspace root. Cursor runs MCP servers with `cwd 
 ## Role Mapping
 
 - **Planner**: Decomposes features. Tools: `create_task`, `set_active_feature`
-- **Reviewer**: Plans, designs, reviews. Tools: `await_engineer_update`, `post_directive`, `post_approval`, `post_rejection`
+- **Reviewer**: Reviews implementations. Tools: `await_engineer_update`, `post_approval`, `post_rejection`
 - **Engineer**: Implements. Tools: `await_reviewer_update`, `post_implementation_report`, `post_comments_resolution`
 
 ## Planner Orchestration Rule
@@ -36,7 +36,6 @@ Derive `projectRoot` from the workspace root. Cursor runs MCP servers with `cwd 
 ## Phase Machine
 
 ```
-AWAITING_DIRECTIVE → Reviewer posts directive
 AWAITING_IMPLEMENTATION_REPORT → Engineer implements, posts report
 AWAITING_REVIEW → Reviewer reviews → post_approval or post_rejection
 AWAITING_COMMENTS_RESOLUTION → Engineer fixes rejection, posts resolution
