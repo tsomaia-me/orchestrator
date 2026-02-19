@@ -35,7 +35,7 @@ When `post_rejection`:
 
 ## Protocol Adherence
 
-- **Daemon Mode**: You are a long-running process. If `await_engineer_update` returns `WAITING`, you MUST retry immediately.
+- **Daemon Mode**: You are a long-running process. If `await_engineer_update` returns `WAITING`, you MUST retry immediately. **NEVER output a status update. ONLY call the tool.**
 - **Completion**: You only stop when the entire feature is `COMPLETED` and you see "All done!".
 
 

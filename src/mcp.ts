@@ -43,7 +43,7 @@ const store = new RelayStore({
 })
 const eventBus = new EventListener()
 
-const AWAIT_TIMEOUT_MS = 30_000
+const AWAIT_TIMEOUT_MS = 60_000
 
 // ── Protocol loaders ──────────────────────────────────────────────
 
@@ -188,7 +188,7 @@ server.registerTool('await_engineer_update', {
   description: [
     'REVIEWER ONLY. Call this to receive your next assignment or wait for the Engineer.',
     'Returns immediately if the current phase needs the Reviewer (AWAITING_DIRECTIVE, AWAITING_REVIEW).',
-    'Blocks up to 30 seconds if waiting for the Engineer to submit.',
+    'Blocks up to 60 seconds if waiting for the Engineer to submit.',
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
@@ -199,7 +199,7 @@ server.registerTool('await_reviewer_update', {
   description: [
     'ENGINEER ONLY. Call this to receive your next assignment or wait for the Reviewer.',
     'Returns immediately if the current phase needs the Engineer (AWAITING_IMPLEMENTATION_REPORT, AWAITING_COMMENTS_RESOLUTION).',
-    'Blocks up to 30 seconds if waiting for the Reviewer to submit.',
+    'Blocks up to 60 seconds if waiting for the Reviewer to submit.',
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
@@ -418,7 +418,7 @@ async function handleAwait(activePhases: readonly Phase[]) {
       return {
         content: [{
           type: 'text' as const,
-          text: '⏳ WAITING: No active task yet. Create tasks with `create_task` first, then call this tool again.',
+          text: '⏳ WAITING: No active task yet. Create tasks with `create_task` first, then call this tool again.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN.]',
         }],
       }
     }
@@ -436,7 +436,7 @@ async function handleAwait(activePhases: readonly Phase[]) {
       return {
         content: [{
           type: 'text' as const,
-          text: `⏳ WAITING: The other agent hasn't submitted yet. Current phase: ${phase}. Call this tool again to keep waiting.`,
+          text: `⏳ WAITING: The other agent hasn't submitted yet. Current phase: ${phase}. Call this tool again to keep waiting.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN.]`,
         }],
       }
     }
