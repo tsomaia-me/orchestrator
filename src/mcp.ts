@@ -246,10 +246,10 @@ server.registerTool('post_directive', {
   description: [
     'REVIEWER ONLY. Submit your technical blueprint for the Engineer.',
     'Only callable when phase is AWAITING_DIRECTIVE.',
-    'After submitting, call `await_engineer_update` to wait for the Engineer\'s report.',
+    'After submitting, automatically waits for the Engineer\'s report and returns it.',
   ].join(' '),
   inputSchema: DirectiveSchema,
-}, (data: Directive) => {
+}, async (data: Directive) => {
   const task = requireActiveTask()
   requirePhase(task, 'AWAITING_DIRECTIVE')
 
@@ -266,22 +266,22 @@ server.registerTool('post_directive', {
     store.getActiveTask()!,
   )
 
-  return {
-    content: [{
-      type: 'text' as const,
-      text: 'Directive submitted. Phase: AWAITING_IMPLEMENTATION_REPORT. Call `await_engineer_update` to wait for the Engineer\'s report.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]',
-    }],
-  }
+  return autoChainAwait(
+    'Directive submitted. Phase: AWAITING_IMPLEMENTATION_REPORT.',
+    'reviewer',
+    REVIEWER_ACTIVE_PHASES,
+    'await_engineer_update',
+  )
 })
 
 server.registerTool('post_implementation_report', {
   description: [
     'ENGINEER ONLY. Submit your implementation report.',
     'Callable when phase is AWAITING_IMPLEMENTATION_REPORT.',
-    'After submitting, call `await_reviewer_update` to wait for the review.',
+    'After submitting, automatically waits for the Reviewer\'s verdict and returns it.',
   ].join(' '),
   inputSchema: EngineerReportSchema,
-}, (data: EngineerReport) => {
+}, async (data: EngineerReport) => {
   const task = requireActiveTask()
   requirePhase(task, 'AWAITING_IMPLEMENTATION_REPORT')
 
@@ -298,22 +298,22 @@ server.registerTool('post_implementation_report', {
     store.getActiveTask()!,
   )
 
-  return {
-    content: [{
-      type: 'text' as const,
-      text: 'Report submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for the Reviewer\'s review.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_reviewer_update.]',
-    }],
-  }
+  return autoChainAwait(
+    'Report submitted. Phase: AWAITING_REVIEW.',
+    'engineer',
+    ENGINEER_ACTIVE_PHASES,
+    'await_reviewer_update',
+  )
 })
 
 server.registerTool('post_comments_resolution', {
   description: [
     'ENGINEER ONLY. Submit your resolution addressing the Reviewer\'s rejection.',
     'Callable when phase is AWAITING_COMMENTS_RESOLUTION.',
-    'After submitting, call `await_reviewer_update` to wait for re-review.',
+    'After submitting, automatically waits for the Reviewer\'s re-review and returns it.',
   ].join(' '),
   inputSchema: EngineerReportSchema,
-}, (data: EngineerReport) => {
+}, async (data: EngineerReport) => {
   const task = requireActiveTask()
   requirePhase(task, 'AWAITING_COMMENTS_RESOLUTION')
 
@@ -330,12 +330,12 @@ server.registerTool('post_comments_resolution', {
     store.getActiveTask()!,
   )
 
-  return {
-    content: [{
-      type: 'text' as const,
-      text: 'Resolution submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for re-review.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_reviewer_update.]',
-    }],
-  }
+  return autoChainAwait(
+    'Resolution submitted. Phase: AWAITING_REVIEW.',
+    'engineer',
+    ENGINEER_ACTIVE_PHASES,
+    'await_reviewer_update',
+  )
 })
 
 server.registerTool('post_approval', {
@@ -343,10 +343,10 @@ server.registerTool('post_approval', {
     'REVIEWER ONLY. Approve the Engineer\'s work.',
     'Only callable when phase is AWAITING_REVIEW.',
     'Marks the current task COMPLETED and advances to the next task if one exists.',
-    'After approving, call `await_engineer_update` to pick up the next task.',
+    'Automatically waits for the next assignment and returns it.',
   ].join(' '),
   inputSchema: ApprovalSchema,
-}, (data: Approval) => {
+}, async (data: Approval) => {
   const task = requireActiveTask()
   requirePhase(task, 'AWAITING_REVIEW')
 
@@ -370,12 +370,12 @@ server.registerTool('post_approval', {
   if (nextTask) {
     eventBus.trigger('set_active_task', nextTask)
 
-    return {
-      content: [{
-        type: 'text' as const,
-        text: `APPROVED. Task ${task.taskId} completed. Next task: ${nextTask.taskId} (${nextTask.phase}). Call \`await_engineer_update\` to continue.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]`,
-      }],
-    }
+    return autoChainAwait(
+      `APPROVED. Task ${task.taskId} completed. Next task: ${nextTask.taskId} (${nextTask.phase}).`,
+      'reviewer',
+      REVIEWER_ACTIVE_PHASES,
+      'await_engineer_update',
+    )
   }
 
   return {
@@ -390,10 +390,10 @@ server.registerTool('post_rejection', {
   description: [
     'REVIEWER ONLY. Reject the Engineer\'s work with required fixes.',
     'Only callable when phase is AWAITING_REVIEW.',
-    'After rejecting, call `await_engineer_update` to wait for the Engineer\'s resolution.',
+    'After rejecting, automatically waits for the Engineer\'s resolution and returns it.',
   ].join(' '),
   inputSchema: RejectionSchema,
-}, (data: Rejection) => {
+}, async (data: Rejection) => {
   const task = requireActiveTask()
   requirePhase(task, 'AWAITING_REVIEW')
 
@@ -410,12 +410,12 @@ server.registerTool('post_rejection', {
     store.getActiveTask()!,
   )
 
-  return {
-    content: [{
-      type: 'text' as const,
-      text: 'REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION. Call `await_engineer_update` to wait for the Engineer\'s fixes.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]',
-    }],
-  }
+  return autoChainAwait(
+    'REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION.',
+    'reviewer',
+    REVIEWER_ACTIVE_PHASES,
+    'await_engineer_update',
+  )
 })
 
 // ── Shared helpers ────────────────────────────────────────────────
@@ -435,6 +435,47 @@ function requirePhase(task: TaskState, ...allowed: Phase[]): void {
       `but this tool requires ${allowed.join(' or ')}. ` +
       `Call the appropriate await tool to check the current state.`
     )
+  }
+}
+
+async function autoChainAwait(
+  prefixMessage: string,
+  role: 'reviewer' | 'engineer',
+  activePhases: readonly Phase[],
+  awaitToolName: string,
+) {
+  if (awaitInFlight.get(role)) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `${prefixMessage}\n\n⏳ ALREADY WAITING: A previous ${awaitToolName} is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]`,
+      }],
+    }
+  }
+
+  awaitInFlight.set(role, true)
+  try {
+    const result = await handleAwait(activePhases)
+
+    // Check if handleAwait timed out (returns the WAITING message)
+    if (result.content[0].text.includes('⏳ WAITING:')) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `${prefixMessage}\n\n${result.content[0].text}`,
+        }],
+      }
+    }
+
+    // Happy path: we blocked and woke up with the next briefing
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `${prefixMessage}\n\n---\n\n${result.content[0].text}`,
+      }],
+    }
+  } finally {
+    awaitInFlight.set(role, false)
   }
 }
 
