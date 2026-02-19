@@ -45,6 +45,9 @@ const eventBus = new EventListener()
 
 const AWAIT_TIMEOUT_MS = 60_000
 
+// Per-role concurrency lock: prevents duplicate await calls from stacking
+const awaitInFlight = new Map<string, boolean>()
+
 // ── Protocol loaders ──────────────────────────────────────────────
 
 server.registerTool('load_planner_protocol', {
@@ -197,7 +200,20 @@ server.registerTool('await_engineer_update', {
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
-  return await handleAwait(REVIEWER_ACTIVE_PHASES)
+  if (awaitInFlight.get('reviewer')) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: '⏳ ALREADY WAITING: A previous await_engineer_update is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]',
+      }],
+    }
+  }
+  awaitInFlight.set('reviewer', true)
+  try {
+    return await handleAwait(REVIEWER_ACTIVE_PHASES)
+  } finally {
+    awaitInFlight.set('reviewer', false)
+  }
 })
 
 server.registerTool('await_reviewer_update', {
@@ -208,7 +224,20 @@ server.registerTool('await_reviewer_update', {
   ].join(' '),
   inputSchema: AwaitUpdateSchema,
 }, async () => {
-  return await handleAwait(ENGINEER_ACTIVE_PHASES)
+  if (awaitInFlight.get('engineer')) {
+    return {
+      content: [{
+        type: 'text' as const,
+        text: '⏳ ALREADY WAITING: A previous await_reviewer_update is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]',
+      }],
+    }
+  }
+  awaitInFlight.set('engineer', true)
+  try {
+    return await handleAwait(ENGINEER_ACTIVE_PHASES)
+  } finally {
+    awaitInFlight.set('engineer', false)
+  }
 })
 
 // ── Action tools ──────────────────────────────────────────────────
@@ -240,7 +269,7 @@ server.registerTool('post_directive', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'Directive submitted. Phase: AWAITING_IMPLEMENTATION_REPORT. Call `await_engineer_update` to wait for the Engineer\'s report.',
+      text: 'Directive submitted. Phase: AWAITING_IMPLEMENTATION_REPORT. Call `await_engineer_update` to wait for the Engineer\'s report.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]',
     }],
   }
 })
@@ -272,7 +301,7 @@ server.registerTool('post_implementation_report', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'Report submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for the Reviewer\'s review.',
+      text: 'Report submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for the Reviewer\'s review.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_reviewer_update.]',
     }],
   }
 })
@@ -304,7 +333,7 @@ server.registerTool('post_comments_resolution', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'Resolution submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for re-review.',
+      text: 'Resolution submitted. Phase: AWAITING_REVIEW. Call `await_reviewer_update` to wait for re-review.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_reviewer_update.]',
     }],
   }
 })
@@ -344,7 +373,7 @@ server.registerTool('post_approval', {
     return {
       content: [{
         type: 'text' as const,
-        text: `APPROVED. Task ${task.taskId} completed. Next task: ${nextTask.taskId} (${nextTask.phase}). Call \`await_engineer_update\` to continue.`,
+        text: `APPROVED. Task ${task.taskId} completed. Next task: ${nextTask.taskId} (${nextTask.phase}). Call \`await_engineer_update\` to continue.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]`,
       }],
     }
   }
@@ -352,7 +381,7 @@ server.registerTool('post_approval', {
   return {
     content: [{
       type: 'text' as const,
-      text: `APPROVED. Task ${task.taskId} completed. No more tasks in feature ${task.featureId}. All done!`,
+      text: `APPROVED. Task ${task.taskId} completed. No more tasks in feature ${task.featureId}. All done!\n\nYou may now stop. Do NOT call any more tools.`,
     }],
   }
 })
@@ -384,7 +413,7 @@ server.registerTool('post_rejection', {
   return {
     content: [{
       type: 'text' as const,
-      text: 'REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION. Call `await_engineer_update` to wait for the Engineer\'s fixes.',
+      text: 'REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION. Call `await_engineer_update` to wait for the Engineer\'s fixes.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL await_engineer_update.]',
     }],
   }
 })
@@ -521,21 +550,24 @@ function waitForAnyEventWithTimeout(
 }
 
 function buildBriefing(task: TaskState) {
-  // Re-read from store to get the latest state
-  const currentTask = store.getActiveTask() ?? task
+  // Re-read from store to get the latest state (guards against staleness)
+  const currentTask = store.getActiveTask()
+
+  // If the active task changed while we were waiting, use the fresh one
+  const effectiveTask = currentTask ?? task
 
   let handoff: Handoff | null = null
-  if (currentTask.handoff) {
-    handoff = currentTask.handoff
+  if (effectiveTask.handoff) {
+    handoff = effectiveTask.handoff
   }
 
   const briefing: Briefing = {
-    featureId: currentTask.featureId,
-    taskId: currentTask.taskId,
-    phase: currentTask.phase,
-    task: currentTask,
+    featureId: effectiveTask.featureId,
+    taskId: effectiveTask.taskId,
+    phase: effectiveTask.phase,
+    task: effectiveTask,
     handoff,
-    instructions: getPhaseDirective(currentTask.phase),
+    instructions: getPhaseDirective(effectiveTask.phase),
   }
 
   return {
