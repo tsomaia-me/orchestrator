@@ -77,6 +77,12 @@ describe('TemplateManager', () => {
   })
 
   describe('copyAllDefaultsToProject', () => {
+    it('works without prior initialize', () => {
+      manager.copyAllDefaultsToProject(projectRoot)
+      const userDir = path.join(projectRoot, '.relay', 'templates')
+      expect(fs.existsSync(path.join(userDir, 'planner_protocol.mx'))).toBe(true)
+    })
+
     it('copies all .mx files when user dir is empty', () => {
       manager.copyAllDefaultsToProject(projectRoot)
       const userDir = path.join(projectRoot, '.relay', 'templates')

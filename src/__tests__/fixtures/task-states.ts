@@ -6,7 +6,7 @@ const DEFAULT_SPEC = {
   constraints: ['constraint1'],
 }
 
-export function makeTask(overrides: Partial<TaskState> & { phase?: Phase }): TaskState {
+export function makeTask(overrides: Partial<TaskState> & { phase?: Phase } = {}): TaskState {
   return {
     featureId: 'feat-1',
     taskId: 'task-a',

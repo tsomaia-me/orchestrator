@@ -22,13 +22,13 @@ import {
   Phase,
   Rejection,
   SetActiveFeature,
-  TaskState,
 } from './types'
 import { RelayStore } from './relay-store'
 import { FilePersistence } from './persistence/file-persistence'
 import { EventListener } from './event-listener'
-import { buildBriefing } from './build-briefing'
 import { handleAwait as handleAwaitCore, createDefaultWait } from './await-flow'
+import { requireActiveTask, requirePhase } from './guards'
+import { autoChainAwait as autoChainAwaitFn } from './auto-chain-await'
 
 // ── Server setup ──────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ server.registerTool('post_implementation_report', {
   ].join(' '),
   inputSchema: EngineerReportSchema,
 }, async (data: EngineerReport) => {
-  const task = requireActiveTask()
+  const task = requireActiveTask(store)
   requirePhase(task, 'AWAITING_IMPLEMENTATION_REPORT')
 
   console.log('post_implementation_report', task.featureId, task.taskId)
@@ -258,7 +258,7 @@ server.registerTool('post_comments_resolution', {
   ].join(' '),
   inputSchema: EngineerReportSchema,
 }, async (data: EngineerReport) => {
-  const task = requireActiveTask()
+  const task = requireActiveTask(store)
   requirePhase(task, 'AWAITING_COMMENTS_RESOLUTION')
 
   console.log('post_comments_resolution', task.featureId, task.taskId)
@@ -292,7 +292,7 @@ server.registerTool('post_approval', {
   ].join(' '),
   inputSchema: ApprovalSchema,
 }, async (data: Approval) => {
-  const task = requireActiveTask()
+  const task = requireActiveTask(store)
   requirePhase(task, 'AWAITING_REVIEW')
 
   console.log('post_approval', task.featureId, task.taskId)
@@ -342,7 +342,7 @@ server.registerTool('post_rejection', {
   ].join(' '),
   inputSchema: RejectionSchema,
 }, async (data: Rejection) => {
-  const task = requireActiveTask()
+  const task = requireActiveTask(store)
   requirePhase(task, 'AWAITING_REVIEW')
 
   console.log('post_rejection', task.featureId, task.taskId)
@@ -369,64 +369,23 @@ server.registerTool('post_rejection', {
 
 // ── Shared helpers ────────────────────────────────────────────────
 
-function requireActiveTask(): TaskState {
-  const task = store.getActiveTask()
-  if (!task) {
-    throw new Error('No active task. Create tasks with `create_task` and set the active feature with `set_active_feature` first.')
-  }
-  return task
+const autoChainAwaitDeps = {
+  awaitInFlight,
+  handleAwait: (activePhases: readonly Phase[], thisToolName: string) =>
+    handleAwaitCore(activePhases, thisToolName, handleAwaitDeps, AWAIT_TIMEOUT_MS),
+  templateManager,
+  getProjectRoot,
+  timeoutMs: AWAIT_TIMEOUT_MS,
 }
 
-function requirePhase(task: TaskState, ...allowed: Phase[]): void {
-  if (!allowed.includes(task.phase)) {
-    throw new Error(
-      `Phase mismatch: current phase is ${task.phase}, ` +
-      `but this tool requires ${allowed.join(' or ')}. ` +
-      `Call the appropriate await tool to check the current state.`
-    )
-  }
-}
-
-async function autoChainAwait(
+function autoChainAwait(
   templateName: string,
   baseContext: Record<string, unknown>,
   role: 'reviewer' | 'engineer',
   activePhases: readonly Phase[],
   awaitToolName: string,
 ) {
-  templateManager.initialize(getProjectRoot())
-
-  if (awaitInFlight.get(role)) {
-    const text = templateManager.render(templateName, {
-      ...baseContext,
-      state: 'already_waiting',
-      awaitToolName,
-    })
-    return { content: [{ type: 'text' as const, text }] }
-  }
-
-  awaitInFlight.set(role, true)
-  try {
-    const result = await handleAwaitCore(activePhases, awaitToolName, handleAwaitDeps, AWAIT_TIMEOUT_MS)
-
-    if (result.content[0].text.includes('⏳ WAITING:')) {
-      const text = templateManager.render(templateName, {
-        ...baseContext,
-        state: 'timeout',
-        awaitToolName,
-      })
-      return { content: [{ type: 'text' as const, text }] }
-    }
-
-    const text = templateManager.render(templateName, {
-      ...baseContext,
-      state: 'success',
-      briefingText: result.content[0].text,
-    })
-    return { content: [{ type: 'text' as const, text }] }
-  } finally {
-    awaitInFlight.set(role, false)
-  }
+  return autoChainAwaitFn(templateName, baseContext, role, activePhases, awaitToolName, autoChainAwaitDeps)
 }
 
 // ── Start ─────────────────────────────────────────────────────────
