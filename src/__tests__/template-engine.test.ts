@@ -257,4 +257,85 @@ Members (3):
 `
     expect(() => render(shadowTpl, {})).toThrow(/Cannot shadow or redefine constant 'a'/)
   })
+
+  it('Extreme Edge Cases & Parser Torment', () => {
+    // 1. Whitespace Chaos
+    const tpl1 = `
+@if       ( 
+  user . age 
+  === 
+  20 
+  )
+Yes
+@endif`.trim()
+    expect(render(tpl1, { user: { age: 20 } }).trim()).toBe('Yes')
+
+    // 2. Computed Properties with crazy names
+    const tpl2 = `{{ data["crazy-key-with space"] }}`
+    expect(render(tpl2, { data: { "crazy-key-with space": "works" } })).toBe('works')
+
+    // 3. String literals containing template syntax (Lexer should not interpolate inner strings)
+    const tpl3 = `{{ "{{ not an interpolation }}" }}`
+    expect(render(tpl3, {})).toBe('{{ not an interpolation }}')
+
+    // 4. Dangling blocks
+    expect(() => render('@else', {})).toThrow(/Unexpected block tag: @else/)
+    expect(() => render('@endif', {})).toThrow(/Unexpected block tag: @endif/)
+    expect(() => render('@endfor', {})).toThrow(/Unexpected block tag: @endfor/)
+  })
+
+  it('The Unhandled JS Idioms (Breaking the engine!)', () => {
+    // These are scenarios I know the strict Lexer cannot handle yet because they are complex JS idioms
+
+    // 1. Escaped Quotes inside strings: The lexer will stop at the first internal quote.
+    const tplEscaped = `{{ "He said \\"Hello\\"" }}`
+    expect(() => render(tplEscaped, {})).toThrow()
+
+    // 2. Negative Numbers: Lexer only recognizes digits, not the minus operator as part of a number or unary.
+    const tplNegative = `@const temp = -10`
+    expect(() => render(tplNegative, {})).toThrow(/Unexpected character in expression.*-/)
+
+    // 3. Unary Operators (boolean NOT):
+    const tplUnary = `@if (!user.isActive) \n inactive \n @endif`
+    expect(() => render(tplUnary, { user: { isActive: false } })).toThrow(/Unexpected character in expression.*!/)
+
+    // 4. Unorthodox 'of' usage in @for loops
+    const tplForOf = `@for (item of ["string of doom", "other"]) \n {{ item }} \n @endfor`
+    // Throws because our strict expression parser intentionally does not support Array literals `[`
+    expect(() => render(tplForOf, {})).toThrow()
+
+    // It works because indexOf(' of ') finds the first instance, but what if the item name has "of" with spaces around it?
+    // User names a variable `list of things`. Invalid identifier but interesting break!
+    expect(() => render(`@for (list of things of items)`, {})).toThrow()
+  })
+
+  it('False positives and overlapping data structures', () => {
+    // 1. JSON-LD and Emails (False positive tags)
+    // The engine must NOT crash when encountering `@context`, `@id`, `user@email.com`, or `@iframe`.
+    const tpl1 = `{
+  "@context": "https://json-ld.org/contexts/person.jsonld",
+  "@id": "http://dbpedia.org/resource/John_Lennon",
+  "email": "john@beatles.com",
+  "handle": "@johnlennon",
+  "tagLike": "@iframe width=100"
+}`
+    expect(render(tpl1, {})).toBe(tpl1)
+
+    // 2. Data that generates another template (Template Inception)
+    const tpl2 = `
+@const open = "{{"
+@const close = "}}"
+Code: {{ open }} user.name {{ close }}
+`.trim()
+    expect(render(tpl2, {})).toBe('Code: {{ user.name }}')
+
+    // 3. String literals containing structural AST tokens
+    const tpl3 = `
+@if (user.status === "ACTIVE (ignore this)")
+  @const message = "Status is: @if(true) nested @endif"
+  {{ message }}
+@endif
+`.trim()
+    expect(render(tpl3, { user: { status: "ACTIVE (ignore this)" } }).trim()).toBe("Status is: @if(true) nested @endif")
+  })
 })

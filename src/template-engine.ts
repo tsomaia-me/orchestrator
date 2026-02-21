@@ -221,6 +221,7 @@ export function tokenizeTemplate(source: string): TemplateToken[] {
             break
         }
 
+        // If we pushed up to before `@`, push that text.
         if (nextMatch > cursor) {
             tokens.push({ type: 'TEXT', value: source.slice(cursor, nextMatch) })
         }
@@ -228,16 +229,33 @@ export function tokenizeTemplate(source: string): TemplateToken[] {
         if (isTag) {
             cursor = nextMatch + 1
             let tagName = ''
+            let tagLen = 0
             const sub = source.slice(cursor)
-            if (sub.startsWith('else if')) { tagName = 'else if'; cursor += 7 }
-            else if (sub.startsWith('if')) { tagName = 'if'; cursor += 2 }
-            else if (sub.startsWith('else')) { tagName = 'else'; cursor += 4 }
-            else if (sub.startsWith('endif')) { tagName = 'endif'; cursor += 5 }
-            else if (sub.startsWith('for')) { tagName = 'for'; cursor += 3 }
-            else if (sub.startsWith('endfor')) { tagName = 'endfor'; cursor += 6 }
-            else if (sub.startsWith('const')) { tagName = 'const'; cursor += 5 }
-            else throw new Error(`Unknown tag at index ${cursor}: ${sub.slice(0, 10)}`)
 
+            if (sub.startsWith('else if')) { tagName = 'else if'; tagLen = 7 }
+            else if (sub.startsWith('if')) { tagName = 'if'; tagLen = 2 }
+            else if (sub.startsWith('else')) { tagName = 'else'; tagLen = 4 }
+            else if (sub.startsWith('endif')) { tagName = 'endif'; tagLen = 5 }
+            else if (sub.startsWith('for')) { tagName = 'for'; tagLen = 3 }
+            else if (sub.startsWith('endfor')) { tagName = 'endfor'; tagLen = 6 }
+            else if (sub.startsWith('const')) { tagName = 'const'; tagLen = 5 }
+
+            let isValidTag = false
+            if (tagName !== '') {
+                const nextChar = sub[tagLen]
+                // Valid boundaries: whitespace, newline, or a parenthesis
+                if (nextChar === undefined || nextChar === ' ' || nextChar === '\t' || nextChar === '\n' || nextChar === '\r' || nextChar === '(') {
+                    isValidTag = true
+                }
+            }
+
+            if (!isValidTag) {
+                // False positive `@` (e.g. email, JSON-LD @context). Push `@` as text and resume.
+                tokens.push({ type: 'TEXT', value: '@' })
+                continue
+            }
+
+            cursor += tagLen
             while (cursor < length && (source[cursor] === ' ' || source[cursor] === '\t')) cursor++
 
             let inner: string | null = null
