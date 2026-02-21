@@ -1,0 +1,13 @@
+@if (state is "already_waiting")
+⏳ ALREADY WAITING: A previous {{ awaitToolName }} is still in-flight. Do not call this again until it returns.
+
+[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]
+@else if (state is "no_active_task")
+⏳ WAITING: No active task yet. Create tasks with \`create_task\` first, then call this tool again.
+
+[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL {{ thisToolName }}.]
+@else if (state is "waiting_for_other")
+⏳ WAITING: The other agent hasn't submitted yet. Current phase: {{ phase }}. Call this tool again to keep waiting.
+
+[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL {{ thisToolName }}.]
+@endif

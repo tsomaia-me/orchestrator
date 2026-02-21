@@ -60,6 +60,11 @@ export function resetInitialization(): void {
   initializedRoot = null
 }
 
+/** Returns the project root used for relay operations. Use for template manager when tools don't receive projectRoot. */
+export function getProjectRoot(): string {
+  return initializedRoot || process.env.RELAY_ROOT || process.cwd()
+}
+
 // ── State factory ─────────────────────────────────────────────────
 
 export function createEmptyState(): RelayState {

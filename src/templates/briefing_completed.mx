@@ -1,0 +1,16 @@
+This task is COMPLETED. The Head Planner must now decide the next move.
+
+---
+### ACTIVE TASK:
+Feature ID: {{ task.featureId }}
+Task ID: {{ task.taskId }}
+Phase: {{ task.phase }}
+
+### TASK SPECIFICATION:
+{{ task.spec | json }}
+
+@if (task.handoff)
+---
+### LATEST HANDOFF ({{ task.handoff.type }}):
+{{ task.handoff.data | json }}
+@endif

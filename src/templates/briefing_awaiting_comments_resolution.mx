@@ -1,0 +1,18 @@
+You are the ENGINEER. Read the Reviewer's rejection comments.
+Implement the required fixes.
+Submit your resolutions via \`post_comments_resolution\`.
+
+---
+### ACTIVE TASK:
+Feature ID: {{ task.featureId }}
+Task ID: {{ task.taskId }}
+Phase: {{ task.phase }}
+
+### TASK SPECIFICATION:
+{{ task.spec | json }}
+
+@if (task.handoff)
+---
+### LATEST HANDOFF ({{ task.handoff.type }}):
+{{ task.handoff.data | json }}
+@endif

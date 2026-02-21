@@ -1,0 +1,19 @@
+@if (state is "already_waiting")
+REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION.
+
+⏳ ALREADY WAITING: A previous {{ awaitToolName }} is still in-flight. Do not call this again until it returns.
+
+[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]
+@else if (state is "timeout")
+REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION.
+
+⏳ WAITING: The other agent hasn't submitted yet.
+
+[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL {{ awaitToolName }}.]
+@else
+REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION.
+
+---
+
+{{ briefingText }}
+@endif

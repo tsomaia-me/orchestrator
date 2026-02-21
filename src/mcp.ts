@@ -10,11 +10,10 @@ import {
   SetActiveFeatureSchema,
 } from './schema'
 import { templateManager } from './template-manager'
-import { createEmptyState, initialize } from './helpers'
+import { createEmptyState, getProjectRoot, initialize } from './helpers'
 import {
   REVIEWER_ACTIVE_PHASES,
   Approval,
-  Briefing,
   CreateTask,
   ENGINEER_ACTIVE_PHASES,
   EngineerReport,
@@ -61,7 +60,7 @@ server.registerTool('load_planner_protocol', {
   templateManager.initialize(data.projectRoot)
   store.rehydrate()
 
-  const text = templateManager.render('planner_protocol.md', {})
+  const text = templateManager.render('planner_protocol.mx', {})
 
   return {
     content: [{ type: 'text' as const, text }],
@@ -77,9 +76,10 @@ server.registerTool('load_reviewer_protocol', {
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
   initialize(data.projectRoot, persistence)
+  templateManager.initialize(data.projectRoot)
   store.rehydrate()
 
-  const text = templateManager.render('reviewer_protocol.md', {})
+  const text = templateManager.render('reviewer_protocol.mx', {})
 
   return {
     content: [{ type: 'text' as const, text }],
@@ -95,9 +95,10 @@ server.registerTool('load_engineer_protocol', {
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
   initialize(data.projectRoot, persistence)
+  templateManager.initialize(data.projectRoot)
   store.rehydrate()
 
-  const text = templateManager.render('engineer_protocol.md', {})
+  const text = templateManager.render('engineer_protocol.mx', {})
 
   return {
     content: [{ type: 'text' as const, text }],
@@ -121,11 +122,10 @@ server.registerTool('create_task', {
     handoff: null,
   })
 
+  templateManager.initialize(getProjectRoot())
+  const text = templateManager.render('create_task.mx', { featureId, taskId })
   return {
-    content: [{
-      type: 'text' as const,
-      text: `Task created: ${featureId}/${taskId}. Phase: AWAITING_IMPLEMENTATION_REPORT.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -142,11 +142,16 @@ server.registerTool('set_active_feature', {
     eventBus.trigger('set_active_task', task)
   }
 
+  templateManager.initialize(getProjectRoot())
+  const ctx = {
+    featureId: data.featureId,
+    taskId: task?.taskId ?? 'none',
+    phase: task?.phase ?? 'unknown',
+    task,
+  }
+  const text = templateManager.render('set_active_feature.mx', ctx)
   return {
-    content: [{
-      type: 'text' as const,
-      text: `Active feature set to: ${data.featureId}. Active task: ${task?.taskId ?? 'none'}. Phase: ${task?.phase ?? 'unknown'}.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -161,12 +166,12 @@ server.registerTool('await_engineer_update', {
   inputSchema: AwaitUpdateSchema,
 }, async () => {
   if (awaitInFlight.get('reviewer')) {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: '⏳ ALREADY WAITING: A previous await_engineer_update is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]',
-      }],
-    }
+    templateManager.initialize(getProjectRoot())
+    const text = templateManager.render('await_update.mx', {
+      state: 'already_waiting',
+      awaitToolName: 'await_engineer_update',
+    })
+    return { content: [{ type: 'text' as const, text }] }
   }
   awaitInFlight.set('reviewer', true)
   try {
@@ -185,12 +190,12 @@ server.registerTool('await_reviewer_update', {
   inputSchema: AwaitUpdateSchema,
 }, async () => {
   if (awaitInFlight.get('engineer')) {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: '⏳ ALREADY WAITING: A previous await_reviewer_update is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]',
-      }],
-    }
+    templateManager.initialize(getProjectRoot())
+    const text = templateManager.render('await_update.mx', {
+      state: 'already_waiting',
+      awaitToolName: 'await_reviewer_update',
+    })
+    return { content: [{ type: 'text' as const, text }] }
   }
   awaitInFlight.set('engineer', true)
   try {
@@ -229,7 +234,8 @@ server.registerTool('post_implementation_report', {
   )
 
   return autoChainAwait(
-    'Report submitted. Phase: AWAITING_REVIEW.',
+    'post_implementation_report.mx',
+    { task },
     'engineer',
     ENGINEER_ACTIVE_PHASES,
     'await_reviewer_update',
@@ -261,7 +267,8 @@ server.registerTool('post_comments_resolution', {
   )
 
   return autoChainAwait(
-    'Resolution submitted. Phase: AWAITING_REVIEW.',
+    'post_comments_resolution.mx',
+    { task },
     'engineer',
     ENGINEER_ACTIVE_PHASES,
     'await_reviewer_update',
@@ -301,18 +308,21 @@ server.registerTool('post_approval', {
     eventBus.trigger('set_active_task', nextTask)
 
     return autoChainAwait(
-      `APPROVED. Task ${task.taskId} completed. Next task: ${nextTask.taskId} (${nextTask.phase}).`,
+      'post_approval.mx',
+      { task, nextTask },
       'reviewer',
       REVIEWER_ACTIVE_PHASES,
       'await_engineer_update',
     )
   }
 
+  templateManager.initialize(getProjectRoot())
+  const text = templateManager.render('post_approval.mx', {
+    state: 'all_done',
+    task,
+  })
   return {
-    content: [{
-      type: 'text' as const,
-      text: `APPROVED. Task ${task.taskId} completed. No more tasks in feature ${task.featureId}. All done!\n\nYou may now stop. Do NOT call any more tools.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -341,7 +351,8 @@ server.registerTool('post_rejection', {
   )
 
   return autoChainAwait(
-    'REJECTED. Phase: AWAITING_COMMENTS_RESOLUTION.',
+    'post_rejection.mx',
+    { task },
     'reviewer',
     REVIEWER_ACTIVE_PHASES,
     'await_engineer_update',
@@ -369,43 +380,42 @@ function requirePhase(task: TaskState, ...allowed: Phase[]): void {
 }
 
 async function autoChainAwait(
-  prefixMessage: string,
+  templateName: string,
+  baseContext: Record<string, unknown>,
   role: 'reviewer' | 'engineer',
   activePhases: readonly Phase[],
   awaitToolName: string,
 ) {
+  templateManager.initialize(getProjectRoot())
+
   if (awaitInFlight.get(role)) {
-    return {
-      content: [{
-        type: 'text' as const,
-        text: `${prefixMessage}\n\n⏳ ALREADY WAITING: A previous ${awaitToolName} is still in-flight. Do not call this again until it returns.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL THE TOOL AGAIN AFTER A SHORT DELAY.]`,
-      }],
-    }
+    const text = templateManager.render(templateName, {
+      ...baseContext,
+      state: 'already_waiting',
+      awaitToolName,
+    })
+    return { content: [{ type: 'text' as const, text }] }
   }
 
   awaitInFlight.set(role, true)
   try {
     const result = await handleAwait(activePhases, awaitToolName)
 
-    // Check if handleAwait timed out (returns the WAITING message)
     if (result.content[0].text.includes('⏳ WAITING:')) {
-      return {
-        content: [{
-          type: 'text' as const,
-          // If we timed out after posting, we must tell the agent exactly which tool to call next,
-          // rather than "this tool" which they interpret as the post_* tool they just called.
-          text: `${prefixMessage}\n\n⏳ WAITING: The other agent hasn't submitted yet.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${awaitToolName}.]`,
-        }],
-      }
+      const text = templateManager.render(templateName, {
+        ...baseContext,
+        state: 'timeout',
+        awaitToolName,
+      })
+      return { content: [{ type: 'text' as const, text }] }
     }
 
-    // Happy path: we blocked and woke up with the next briefing
-    return {
-      content: [{
-        type: 'text' as const,
-        text: `${prefixMessage}\n\n---\n\n${result.content[0].text}`,
-      }],
-    }
+    const text = templateManager.render(templateName, {
+      ...baseContext,
+      state: 'success',
+      briefingText: result.content[0].text,
+    })
+    return { content: [{ type: 'text' as const, text }] }
   } finally {
     awaitInFlight.set(role, false)
   }
@@ -425,12 +435,12 @@ async function handleAwait(activePhases: readonly Phase[], thisToolName: string)
     task = await waitForEventWithTimeout('set_active_task', AWAIT_TIMEOUT_MS)
 
     if (!task) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `⏳ WAITING: No active task yet. Create tasks with \`create_task\` first, then call this tool again.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${thisToolName}.]`,
-        }],
-      }
+      templateManager.initialize(getProjectRoot())
+      const text = templateManager.render('await_update.mx', {
+        state: 'no_active_task',
+        thisToolName,
+      })
+      return { content: [{ type: 'text' as const, text }] }
     }
   }
 
@@ -443,12 +453,13 @@ async function handleAwait(activePhases: readonly Phase[], thisToolName: string)
     const updatedTask = await waitForAnyEventWithTimeout(eventsToWatch, AWAIT_TIMEOUT_MS)
 
     if (!updatedTask) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `⏳ WAITING: The other agent hasn't submitted yet. Current phase: ${phase}. Call this tool again to keep waiting.\n\n[CRITICAL: DO NOT WRITE TEXT. IMMEDIATELY CALL ${thisToolName}.]`,
-        }],
-      }
+      templateManager.initialize(getProjectRoot())
+      const text = templateManager.render('await_update.mx', {
+        state: 'waiting_for_other',
+        phase,
+        thisToolName,
+      })
+      return { content: [{ type: 'text' as const, text }] }
     }
 
     task = updatedTask
@@ -520,17 +531,35 @@ function waitForAnyEventWithTimeout(
   })
 }
 
-function buildBriefing(task: TaskState) {
-  // Re-read from store to get the latest state (guards against staleness)
-  const currentTask = store.getActiveTask()
+function buildBriefing(task: TaskState | null) {
+  templateManager.initialize(getProjectRoot())
+  const currentTask = store.getActiveTask() ?? task
 
-  // If the active task changed while we were waiting, use the fresh one
-  const effectiveTask = currentTask ?? task
+  if (!currentTask) {
+    const text = templateManager.render('briefing_no_active_task.mx', { task: null })
+    return { content: [{ type: 'text' as const, text }] }
+  }
 
-  const text = templateManager.render('briefing.md', {
-    task: effectiveTask
-  })
+  const ctx = { task: currentTask }
+  let templateName: string
+  switch (currentTask.phase) {
+    case 'AWAITING_IMPLEMENTATION_REPORT':
+      templateName = 'briefing_awaiting_implementation_report.mx'
+      break
+    case 'AWAITING_REVIEW':
+      templateName = 'briefing_awaiting_review.mx'
+      break
+    case 'AWAITING_COMMENTS_RESOLUTION':
+      templateName = 'briefing_awaiting_comments_resolution.mx'
+      break
+    case 'COMPLETED':
+      templateName = 'briefing_completed.mx'
+      break
+    default:
+      templateName = 'briefing_no_active_task.mx'
+  }
 
+  const text = templateManager.render(templateName, ctx)
   return {
     content: [{ type: 'text' as const, text }],
   }

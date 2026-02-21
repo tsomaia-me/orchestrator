@@ -5,6 +5,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { initialize } from '../helpers';
 import { FilePersistence } from '../persistence/file-persistence';
+import { templateManager } from '../template-manager';
 
 const program = new Command();
 
@@ -22,6 +23,9 @@ program.command('init')
             const persistence = new FilePersistence(path.join(projectRoot, '.relay/state.json'));
 
             initialize(projectRoot, persistence);
+
+            templateManager.initialize(projectRoot);
+            templateManager.copyAllDefaultsToProject(projectRoot);
 
             const cursorSrc = path.join(__dirname, '../cursor'); // dist/bin/../cursor -> dist/cursor
             const cursorDest = path.join(process.cwd(), '.cursor');
