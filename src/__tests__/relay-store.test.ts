@@ -76,7 +76,7 @@ describe('RelayStore', () => {
   describe('advanceToNextTask', () => {
     it('marks current COMPLETED and switches to next task', () => {
       const store = new RelayStore({ initialState: createEmptyState() })
-      store.addTask(makeTask({ taskId: 'task-1' }))
+      store.addTask(makeTask({ taskId: 'task-1', phase: 'AWAITING_REVIEW' }))
       store.addTask(makeTask({ taskId: 'task-2' }))
       const next = store.advanceToNextTask()
       expect(next).not.toBeNull()
@@ -89,12 +89,18 @@ describe('RelayStore', () => {
 
     it('clears currentContext when no next task', () => {
       const store = new RelayStore({ initialState: createEmptyState() })
-      store.addTask(makeTask({ taskId: 'task-1' }))
+      store.addTask(makeTask({ taskId: 'task-1', phase: 'AWAITING_REVIEW' }))
       const next = store.advanceToNextTask()
       expect(next).toBeNull()
       expect(store.getActiveTask()).toBeNull()
       const state = store.getState()
       expect(state.currentContext).toBeNull()
+    })
+
+    it('throws when current task is not in AWAITING_REVIEW', () => {
+      const store = new RelayStore({ initialState: createEmptyState() })
+      store.addTask(makeTask({ taskId: 'task-1', phase: 'AWAITING_IMPLEMENTATION_REPORT' }))
+      expect(() => store.advanceToNextTask()).toThrow(/Cannot advance.*AWAITING_REVIEW/)
     })
   })
 
@@ -124,7 +130,7 @@ describe('RelayStore', () => {
   })
 
   describe('rehydrate and stale currentContext', () => {
-    it('getActiveTask returns null when currentContext points to missing task', () => {
+    it('repairs stale currentContext when it points to missing task', () => {
       const persist = new FilePersistence(path.join(tempDir, '.relay', 'state.json'))
       persist.save({
         features: [{ id: 'feat-1', tasks: [] }],
@@ -132,8 +138,8 @@ describe('RelayStore', () => {
       })
       const store = new RelayStore({ persistence: persist })
       store.rehydrate()
-      const active = store.getActiveTask()
-      expect(active).toBeNull()
+      expect(store.getActiveTask()).toBeNull()
+      expect(store.getState().currentContext).toBeNull()
     })
   })
 

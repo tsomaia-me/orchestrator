@@ -39,7 +39,7 @@ export function buildBriefing(
       templateName = 'briefing_completed.mx'
       break
     default:
-      templateName = 'briefing_no_active_task.mx'
+      templateName = 'briefing_unknown_phase.mx'
   }
 
   const text = templateManager.render(templateName, ctx)

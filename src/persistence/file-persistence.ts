@@ -1,5 +1,4 @@
-import { RelayState, StatePersistence } from '../types'
-import { createEmptyState } from '../helpers'
+import { LoadResult, RelayState, StatePersistence } from '../types'
 import path from 'path'
 import fs from 'fs'
 
@@ -28,12 +27,13 @@ export class FilePersistence implements StatePersistence {
     fs.renameSync(tmp, this.filePath)
   }
 
-  load(): RelayState {
+  load(): LoadResult {
     try {
       const data = fs.readFileSync(this.filePath, 'utf-8')
-      return JSON.parse(data) as RelayState
-    } catch {
-      return createEmptyState()
+      const state = JSON.parse(data) as RelayState
+      return { ok: true, state }
+    } catch (err) {
+      return { ok: false, error: err as Error }
     }
   }
 }

@@ -53,14 +53,16 @@ describe('helpers', () => {
       expect(getProjectRoot()).toBe(rootAfterFirst)
     })
 
-    it('initialize with different projectRoot on second call keeps first root', () => {
+    it('initialize with different projectRoot on second call uses last root', () => {
       const tempDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'helpers-test-2-'))
-      const persist = new FilePersistence(path.join(tempDir, 'state.json'))
-      initialize(tempDir, persist)
-      const firstRoot = getProjectRoot()
-      initialize(tempDir2, persist)
-      expect(getProjectRoot()).toBe(firstRoot)
-      fs.rmSync(tempDir2, { recursive: true, force: true })
+      try {
+        const persist = new FilePersistence(path.join(tempDir, 'state.json'))
+        initialize(tempDir, persist)
+        initialize(tempDir2, persist)
+        expect(getProjectRoot()).toBe(path.resolve(tempDir2))
+      } finally {
+        fs.rmSync(tempDir2, { recursive: true, force: true })
+      }
     })
   })
 

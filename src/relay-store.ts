@@ -19,11 +19,25 @@ export class RelayStore {
 
   /**
    * Rehydrate state from disk. Call once at startup.
-   * If no persisted state exists, keeps the current (empty) state.
+   * If no persisted state exists or load fails, keeps the current (empty) state.
    */
   rehydrate(): void {
-    if (this.persistence) {
-      this.state = this.persistence.load()
+    if (!this.persistence) return
+    const result = this.persistence.load()
+    if (result.ok) {
+      this.state = result.state
+      // Repair stale currentContext
+      if (this.state.currentContext) {
+        try {
+          this.getTask(this.state.currentContext.featureId, this.state.currentContext.taskId)
+        } catch {
+          this.state.currentContext = null
+          this.flush()
+        }
+      }
+    } else {
+      console.error('[Relay] State file corrupt or unreadable, starting fresh:', result.error.message)
+      this.state = createEmptyState()
     }
   }
 
@@ -161,8 +175,16 @@ export class RelayStore {
   /**
    * Mark the current task as COMPLETED and advance currentContext
    * to the next incomplete task. Returns the next task or null if done.
+   * Only callable when current task is in AWAITING_REVIEW (approval/rejection required).
    */
   advanceToNextTask(): TaskState | null {
+    const current = this.getActiveTask()
+    if (!current) throw new Error('No active task to advance')
+    if (current.phase !== 'AWAITING_REVIEW') {
+      throw new Error(
+        `Cannot advance: task must be in AWAITING_REVIEW (approval/rejection required), got ${current.phase}`,
+      )
+    }
     // Mark current as completed
     this.updateActiveTask(prev => ({
       ...prev,

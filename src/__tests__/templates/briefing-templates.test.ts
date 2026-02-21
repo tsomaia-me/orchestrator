@@ -76,4 +76,13 @@ describe('Briefing templates', () => {
     expect(text).toContain('No active task')
     expect(text).toContain('Head Planner')
   })
+
+  it('briefing_unknown_phase.mx contains phase and Head Planner', () => {
+    const task = makeTaskForPhase('AWAITING_IMPLEMENTATION_REPORT')
+    const taskWithUnknownPhase = { ...task, phase: 'UNKNOWN' as any }
+    const text = manager.render('briefing_unknown_phase.mx', { task: taskWithUnknownPhase })
+    expect(text).toContain('unrecognized phase')
+    expect(text).toContain('UNKNOWN')
+    expect(text).toContain('Head Planner')
+  })
 })

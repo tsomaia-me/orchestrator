@@ -66,11 +66,13 @@ describe('buildBriefing', () => {
     expect(result.content[0].text).toContain('Head Planner')
   })
 
-  it('when task.phase is unknown, uses briefing_no_active_task', () => {
+  it('when task.phase is unknown, uses briefing_unknown_phase', () => {
     const task = makeTaskForPhase('AWAITING_IMPLEMENTATION_REPORT')
     const taskWithUnknownPhase = { ...task, phase: 'UNKNOWN' as any }
     const result = buildBriefing(taskWithUnknownPhase, store, templateManager, getProjectRoot)
-    expect(result.content[0].text).toContain('No active task')
+    expect(result.content[0].text).toContain('unrecognized phase')
+    expect(result.content[0].text).toContain('UNKNOWN')
+    expect(result.content[0].text).toContain('Head Planner')
   })
 
   it('uses store.getActiveTask when available over passed task', () => {

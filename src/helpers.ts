@@ -10,25 +10,18 @@ let initializedRoot: string | null = null
 
 /**
  * Initialize the relay working directory and persistence layer.
- * Idempotent — safe to call multiple times, only runs once.
+ * Idempotent for same root; last-wins when different projectRoot is passed.
  *
  * Resolution: explicit projectRoot > RELAY_ROOT env > process.cwd()
  */
 export function initialize(projectRoot: string, persistence: FilePersistence): void {
-  if (initialized) {
-    const resolvedRoot = projectRoot || process.env.RELAY_ROOT || process.cwd()
-    if (initializedRoot && path.resolve(resolvedRoot) !== initializedRoot) {
-      console.error('initialize() called with different projectRoot', {
-        first: initializedRoot,
-        second: path.resolve(resolvedRoot),
-      })
-    }
+  const resolvedRoot = path.resolve(
+    projectRoot || process.env.RELAY_ROOT || process.cwd(),
+  )
+
+  if (initialized && initializedRoot === resolvedRoot) {
     return
   }
-
-  const resolvedRoot = projectRoot
-    || process.env.RELAY_ROOT
-    || process.cwd()
 
   const relayPath = path.resolve(resolvedRoot, '.relay')
   const logFile = path.resolve(relayPath, 'debug.log')
@@ -51,7 +44,7 @@ export function initialize(projectRoot: string, persistence: FilePersistence): v
   console.log('Relay initialized', { projectRoot: resolvedRoot, relayPath })
 
   initialized = true
-  initializedRoot = path.resolve(resolvedRoot)
+  initializedRoot = resolvedRoot
 }
 
 /** Reset init guard — for testing only */

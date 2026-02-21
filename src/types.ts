@@ -75,9 +75,13 @@ export type Briefing = {
   instructions: string
 }
 
+export type LoadResult =
+  | { ok: true; state: RelayState }
+  | { ok: false; error: Error }
+
 export interface StatePersistence {
-  save(state: RelayState): void;
-  load(): RelayState;
+  save(state: RelayState): void
+  load(): LoadResult
 }
 
 export type FeatureId = string
