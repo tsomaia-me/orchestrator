@@ -12,8 +12,8 @@ export class TemplateManager {
     private userTemplateDir: string | null = null
     private defaultTemplateDir: string
 
-    constructor() {
-        this.defaultTemplateDir = path.resolve(__dirname, 'templates')
+    constructor(defaultTemplateDir?: string) {
+        this.defaultTemplateDir = defaultTemplateDir ?? path.resolve(__dirname, 'templates')
     }
 
     /**

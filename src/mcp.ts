@@ -22,13 +22,13 @@ import {
   Phase,
   Rejection,
   SetActiveFeature,
-  TaskEventListener,
-  TaskEventName,
   TaskState,
 } from './types'
 import { RelayStore } from './relay-store'
 import { FilePersistence } from './persistence/file-persistence'
 import { EventListener } from './event-listener'
+import { buildBriefing } from './build-briefing'
+import { handleAwait as handleAwaitCore, createDefaultWait } from './await-flow'
 
 // ── Server setup ──────────────────────────────────────────────────
 
@@ -45,6 +45,14 @@ const AWAIT_TIMEOUT_MS = 60_000
 
 // Per-role concurrency lock: prevents duplicate await calls from stacking
 const awaitInFlight = new Map<string, boolean>()
+
+const handleAwaitDeps = {
+  store,
+  eventBus,
+  templateManager,
+  getProjectRoot,
+  waitForAnyEventWithTimeout: createDefaultWait(eventBus),
+}
 
 // ── Protocol loaders ──────────────────────────────────────────────
 
@@ -175,7 +183,7 @@ server.registerTool('await_engineer_update', {
   }
   awaitInFlight.set('reviewer', true)
   try {
-    return await handleAwait(REVIEWER_ACTIVE_PHASES, 'await_engineer_update')
+    return await handleAwaitCore(REVIEWER_ACTIVE_PHASES, 'await_engineer_update', handleAwaitDeps, AWAIT_TIMEOUT_MS)
   } finally {
     awaitInFlight.set('reviewer', false)
   }
@@ -199,7 +207,7 @@ server.registerTool('await_reviewer_update', {
   }
   awaitInFlight.set('engineer', true)
   try {
-    return await handleAwait(ENGINEER_ACTIVE_PHASES, 'await_reviewer_update')
+    return await handleAwaitCore(ENGINEER_ACTIVE_PHASES, 'await_reviewer_update', handleAwaitDeps, AWAIT_TIMEOUT_MS)
   } finally {
     awaitInFlight.set('engineer', false)
   }
@@ -399,7 +407,7 @@ async function autoChainAwait(
 
   awaitInFlight.set(role, true)
   try {
-    const result = await handleAwait(activePhases, awaitToolName)
+    const result = await handleAwaitCore(activePhases, awaitToolName, handleAwaitDeps, AWAIT_TIMEOUT_MS)
 
     if (result.content[0].text.includes('⏳ WAITING:')) {
       const text = templateManager.render(templateName, {
@@ -418,150 +426,6 @@ async function autoChainAwait(
     return { content: [{ type: 'text' as const, text }] }
   } finally {
     awaitInFlight.set(role, false)
-  }
-}
-
-/**
- * Core logic for both await tools.
- * If the current phase is in the caller's active phases, return immediately.
- * Otherwise, block up to AWAIT_TIMEOUT_MS waiting for a relevant event.
- */
-async function handleAwait(activePhases: readonly Phase[], thisToolName: string) {
-  let task = store.getActiveTask()
-
-  // If no active task, wait for one to be set
-  if (!task) {
-    console.log('await: no active task, waiting for set_active_task event')
-    task = await waitForEventWithTimeout('set_active_task', AWAIT_TIMEOUT_MS)
-
-    if (!task) {
-      templateManager.initialize(getProjectRoot())
-      const text = templateManager.render('await_update.mx', {
-        state: 'no_active_task',
-        thisToolName,
-      })
-      return { content: [{ type: 'text' as const, text }] }
-    }
-  }
-
-  // If current phase is NOT one where this role has work, block until it is
-  if (!activePhases.includes(task.phase)) {
-    const { featureId, taskId, phase } = task
-    console.log(`await: phase ${phase} is not active for this role, waiting for event`)
-
-    const eventsToWatch = getTransitionEvents(featureId, taskId, phase)
-    const updatedTask = await waitForAnyEventWithTimeout(eventsToWatch, AWAIT_TIMEOUT_MS)
-
-    if (!updatedTask) {
-      templateManager.initialize(getProjectRoot())
-      const text = templateManager.render('await_update.mx', {
-        state: 'waiting_for_other',
-        phase,
-        thisToolName,
-      })
-      return { content: [{ type: 'text' as const, text }] }
-    }
-
-    task = updatedTask
-  }
-
-  // At this point, the current phase IS active for this role
-  return buildBriefing(task)
-}
-
-/**
- * Determine which events would cause a phase transition
- * relevant to the waiting role.
- */
-function getTransitionEvents(featureId: string, taskId: string, phase: Phase): TaskEventName[] {
-  const prefix = `${featureId}.${taskId}` as const
-  switch (phase) {
-    case 'AWAITING_IMPLEMENTATION_REPORT':
-      return [`${prefix}.post_implementation_report`]
-    case 'AWAITING_REVIEW':
-      return [`${prefix}.post_approval`, `${prefix}.post_rejection`]
-    case 'AWAITING_COMMENTS_RESOLUTION':
-      return [`${prefix}.post_comments_resolution`]
-    case 'COMPLETED':
-      return []
-    default:
-      return []
-  }
-}
-
-function waitForEventWithTimeout(
-  event: TaskEventName,
-  timeoutMs: number,
-): Promise<TaskState | null> {
-  return waitForAnyEventWithTimeout([event], timeoutMs)
-}
-
-function waitForAnyEventWithTimeout(
-  events: TaskEventName[],
-  timeoutMs: number,
-): Promise<TaskState | null> {
-  if (events.length === 0) {
-    return Promise.resolve(null)
-  }
-
-  return new Promise<TaskState | null>(resolve => {
-    let settled = false
-    const registeredListeners: { event: TaskEventName; fn: TaskEventListener }[] = []
-
-    const cleanup = () => {
-      clearTimeout(timer)
-      registeredListeners.forEach(({ event, fn }) => eventBus.off(event, fn))
-    }
-
-    const settle = (result: TaskState | null) => {
-      if (!settled) {
-        settled = true
-        cleanup()
-        resolve(result)
-      }
-    }
-
-    const timer = setTimeout(() => settle(null), timeoutMs)
-
-    events.forEach(event => {
-      const fn: TaskEventListener = (payload) => settle(payload)
-      eventBus.on(event, fn)
-      registeredListeners.push({ event, fn })
-    })
-  })
-}
-
-function buildBriefing(task: TaskState | null) {
-  templateManager.initialize(getProjectRoot())
-  const currentTask = store.getActiveTask() ?? task
-
-  if (!currentTask) {
-    const text = templateManager.render('briefing_no_active_task.mx', { task: null })
-    return { content: [{ type: 'text' as const, text }] }
-  }
-
-  const ctx = { task: currentTask }
-  let templateName: string
-  switch (currentTask.phase) {
-    case 'AWAITING_IMPLEMENTATION_REPORT':
-      templateName = 'briefing_awaiting_implementation_report.mx'
-      break
-    case 'AWAITING_REVIEW':
-      templateName = 'briefing_awaiting_review.mx'
-      break
-    case 'AWAITING_COMMENTS_RESOLUTION':
-      templateName = 'briefing_awaiting_comments_resolution.mx'
-      break
-    case 'COMPLETED':
-      templateName = 'briefing_completed.mx'
-      break
-    default:
-      templateName = 'briefing_no_active_task.mx'
-  }
-
-  const text = templateManager.render(templateName, ctx)
-  return {
-    content: [{ type: 'text' as const, text }],
   }
 }
 
