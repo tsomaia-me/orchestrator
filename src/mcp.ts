@@ -9,7 +9,8 @@ import {
   RejectionSchema,
   SetActiveFeatureSchema,
 } from './schema'
-import { createEmptyState, getPhaseDirective, initialize } from './helpers'
+import { templateManager } from './template-manager'
+import { createEmptyState, initialize } from './helpers'
 import {
   REVIEWER_ACTIVE_PHASES,
   Approval,
@@ -57,18 +58,13 @@ server.registerTool('load_planner_protocol', {
   inputSchema: LoadProtocolSchema,
 }, (data: LoadProtocol) => {
   initialize(data.projectRoot, persistence)
+  templateManager.initialize(data.projectRoot)
   store.rehydrate()
 
+  const text = templateManager.render('planner_protocol.md', {})
+
   return {
-    content: [{
-      type: 'text' as const,
-      text: `## Head Planner Protocol
-1. **Scope**: Analyze the user's high-level feature request. Identify dependencies and the "Definition of Done."
-2. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., \`db-setup\` -> \`auth-api\` -> \`login-ui\`).
-3. **Validate**: Present the proposed list of \`taskId\`s and \`objectives\` to the user. **STOP and wait for manual approval.**
-4. **Execute**: Only after user confirmation, call \`create_task\` for every item in the plan.
-5. **Handoff**: Once all tasks are created, the Reviewer and Engineer agents can begin. The Reviewer should call \`await_engineer_update\` and the Engineer should call \`await_reviewer_update\`.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -83,24 +79,10 @@ server.registerTool('load_reviewer_protocol', {
   initialize(data.projectRoot, persistence)
   store.rehydrate()
 
+  const text = templateManager.render('reviewer_protocol.md', {})
+
   return {
-    content: [{
-      type: 'text' as const,
-      text: `## Reviewer Protocol
-
-You are the REVIEWER. Your tools are: \`await_engineer_update\`, \`post_approval\`, \`post_rejection\`.
-
-### Workflow
-1. **Start**: Call \`await_engineer_update\` to receive the current task spec or the Engineer's latest report.
-2. **Review** (if AWAITING_REVIEW): Verify the Engineer's report meets all constraints.
-3. **Decide**: Call \`post_approval\` if satisfactory, or \`post_rejection\` with required fixes. The tool will automatically wait for the next payload.
-4. **Loop**: Repeat.
-
-### Rules
-- NEVER call \`await_reviewer_update\` — that is the Engineer's tool.
-- ALWAYS call \`await_engineer_update\` after submitting an approval or rejection.
-- Review with zero-trust: verify every claim the Engineer makes.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -115,27 +97,10 @@ server.registerTool('load_engineer_protocol', {
   initialize(data.projectRoot, persistence)
   store.rehydrate()
 
+  const text = templateManager.render('engineer_protocol.md', {})
+
   return {
-    content: [{
-      type: 'text' as const,
-      text: `## Engineer Protocol
-
-You are the ENGINEER. Your tools are: \`await_reviewer_update\`, \`post_implementation_report\`, \`post_comments_resolution\`.
-
-### Workflow
-1. **Start**: Call \`await_reviewer_update\` to receive the task spec.
-2. **Implement**: Code the changes exactly as specified in the task spec.
-3. **Verify**: Run build, tests, and linting locally. Record the exact commands you ran.
-4. **Submit**: Call \`post_implementation_report\` with your changes and verification results. The tool will automatically wait for the Reviewer.
-5. **Review**: Wait for review. If rejected, read the required fixes, implement them, then call \`post_comments_resolution\`. The tool will automatically wait for re-review.
-6. **Loop**: Repeat.
-
-### Rules
-- NEVER call \`await_engineer_update\` — that is the Reviewer's tool.
-- ALWAYS call \`await_reviewer_update\` after submitting a report or resolution.
-- You MUST provide the exact shell commands you ran in your report.
-- Take responsibility for the quality of your code.`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 })
 
@@ -562,25 +527,12 @@ function buildBriefing(task: TaskState) {
   // If the active task changed while we were waiting, use the fresh one
   const effectiveTask = currentTask ?? task
 
-  let handoff: Handoff | null = null
-  if (effectiveTask.handoff) {
-    handoff = effectiveTask.handoff
-  }
-
-  const briefing: Briefing = {
-    featureId: effectiveTask.featureId,
-    taskId: effectiveTask.taskId,
-    phase: effectiveTask.phase,
-    task: effectiveTask,
-    handoff,
-    instructions: getPhaseDirective(effectiveTask.phase),
-  }
+  const text = templateManager.render('briefing.md', {
+    task: effectiveTask
+  })
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: `### MISSION BRIEFING\n${JSON.stringify(briefing, null, 2)}`,
-    }],
+    content: [{ type: 'text' as const, text }],
   }
 }
 

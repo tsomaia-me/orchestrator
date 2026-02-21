@@ -8,12 +8,12 @@
     "relay": "./dist/bin/relay"
   },
   "scripts": {
-    "build": "tsc && rm -rf dist/cursor && cp -r src/cursor dist/ && mv dist/bin/relay.js dist/bin/relay",
+    "build": "tsc && rm -rf dist/cursor && cp -r src/cursor dist/ && cp -r src/templates dist/ && mv dist/bin/relay.js dist/bin/relay",
     "dev": "tsx src/mcp.ts",
     "start": "node dist/mcp.js",
     "inspector": "npx @modelcontextprotocol/inspector node dist/mcp.js",
     "prepublishOnly": "npm run build",
-    "test": "npx tsx --test 'src/**/*.test.ts'"
+    "test": "jest"
   },
   "files": [
     "dist/",
@@ -36,7 +36,10 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
