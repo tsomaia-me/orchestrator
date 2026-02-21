@@ -154,7 +154,7 @@ Done
     expect(render(tpl, ctx).trim()).toBe('Zero Count: admin\nDone')
   })
 
-  it('BATTLE GRADE: The Ultimate Stress Test (Deep nesting, parallel scopes, falsy values, pipe chains)', () => {
+  it('Deep nesting, parallel scopes, falsy values, pipe chains', () => {
     const tpl = `
 @const globalPrefix = ">>"
 @if (payload.isValid === false)
@@ -240,7 +240,7 @@ Members (3):
     expect(result).toBe(expected)
   })
 
-  it('BATTLE GRADE: Resilience against malformed tokens (throws correctly or ignores)', () => {
+  it('Resilience against malformed tokens (throws correctly or ignores)', () => {
     const unclosedTpl = 'Hello {{ user.name'
     expect(() => render(unclosedTpl, {})).toThrow(/Unclosed interpolation/)
 

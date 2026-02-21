@@ -1,41 +1,206 @@
-/**
- * Relay Custom Template Engine
- * 
- * Syntax:
- * @if (condition) ... @else if (cond) ... @else ... @endif
- * @for (item of list) ... @endfor
- * @const name = expression
- * {{ variable.path }}
- * {{ variable | pipe }}
- */
-
 export type Context = Record<string, any>
-export type PipeFunction = (value: any, ...args: string[]) => any
+export type PipeFunction = (value: any, ...args: any[]) => any
 export type PipeRegistry = Record<string, PipeFunction>
 
-// ── AST Nodes ─────────────────────────────────────────────────────────────
+// ── Expression Lexer ──────────────────────────────────────────────────────
 
-export type ASTNode =
-    | { type: 'TEXT'; content: string }
-    | { type: 'INTERPOLATION'; expression: string }
-    | { type: 'CONST'; name: string; expression: string }
-    | { type: 'IF'; condition: string; consequence: ASTNode[]; alternate: ASTNode[] | null }
-    | { type: 'FOR'; itemName: string; listExpression: string; body: ASTNode[] }
+export type ExprToken =
+    | { type: 'Identifier'; value: string }
+    | { type: 'Number'; value: number }
+    | { type: 'String'; value: string }
+    | { type: 'Operator'; value: string }
+    | { type: 'Punctuation'; value: string }
 
-// ── Lexer (Tokenizer) ─────────────────────────────────────────────────────
+function isWhitespace(c: string) { return c === ' ' || c === '\n' || c === '\t' || c === '\r' }
+function isAlpha(c: string) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '$' }
+function isDigit(c: string) { return (c >= '0' && c <= '9') }
 
-type Token =
-    | { type: 'TEXT'; value: string }
-    | { type: 'INTERPOLATION'; value: string }
-    | { type: 'TAG'; value: string }
-
-export function tokenize(source: string): Token[] {
-    const tokens: Token[] = []
+export function tokenizeExpression(source: string): ExprToken[] {
+    const tokens: ExprToken[] = []
     let cursor = 0
     const length = source.length
 
     while (cursor < length) {
-        // Look for {{ or @
+        let char = source[cursor]
+        if (isWhitespace(char)) { cursor++; continue }
+
+        if (char === '"' || char === "'") {
+            const quote = char
+            let str = ''
+            cursor++
+            while (cursor < length && source[cursor] !== quote) {
+                str += source[cursor]
+                cursor++
+            }
+            cursor++
+            tokens.push({ type: 'String', value: str })
+            continue
+        }
+
+        if (isDigit(char)) {
+            let numStr = ''
+            while (cursor < length && (isDigit(source[cursor]) || source[cursor] === '.')) {
+                numStr += source[cursor]
+                cursor++
+            }
+            tokens.push({ type: 'Number', value: parseFloat(numStr) })
+            continue
+        }
+
+        if (isAlpha(char)) {
+            let id = ''
+            while (cursor < length && (isAlpha(source[cursor]) || isDigit(source[cursor]))) {
+                id += source[cursor]
+                cursor++
+            }
+            tokens.push({ type: 'Identifier', value: id })
+            continue
+        }
+
+        if (char === '(' || char === ')' || char === '[' || char === ']' || char === '.' || char === ',' || char === ':') {
+            tokens.push({ type: 'Punctuation', value: char })
+            cursor++
+            continue
+        }
+
+        const three = source.slice(cursor, cursor + 3)
+        if (three === '===' || three === '!==') {
+            tokens.push({ type: 'Operator', value: three })
+            cursor += 3
+            continue
+        }
+
+        const two = source.slice(cursor, cursor + 2)
+        if (two === '==' || two === '!=' || two === '<=' || two === '>=') {
+            tokens.push({ type: 'Operator', value: two })
+            cursor += 2
+            continue
+        }
+
+        if (char === '<' || char === '>' || char === '=' || char === '|') {
+            tokens.push({ type: 'Operator', value: char })
+            cursor++
+            continue
+        }
+
+        throw new Error(`Unexpected character in expression at index ${cursor}: ${char}`)
+    }
+
+    return tokens
+}
+
+// ── Expression Parser ─────────────────────────────────────────────────────
+
+export type ExprAST =
+    | { type: 'Literal'; value: any }
+    | { type: 'Identifier'; name: string }
+    | { type: 'Member'; object: ExprAST; property: string | ExprAST; computed: boolean }
+    | { type: 'Binary'; operator: string; left: ExprAST; right: ExprAST }
+    | { type: 'Pipe'; base: ExprAST; name: string; args: ExprAST[] }
+
+export function parseExpression(source: string): ExprAST {
+    const tokens = tokenizeExpression(source)
+    let pos = 0
+
+    function peek(): ExprToken | null { return pos < tokens.length ? tokens[pos] : null }
+    function consume(): ExprToken { return tokens[pos++] }
+
+    function matchType(type: 'Identifier'): { type: 'Identifier', value: string } | null
+    function matchType(type: 'Number'): { type: 'Number', value: number } | null
+    function matchType(type: 'String'): { type: 'String', value: string } | null
+    function matchType(type: ExprToken['type']): ExprToken | null {
+        const p = peek(); if (p && p.type === type) return consume(); return null
+    }
+    function matchOp(op: string): ExprToken | null {
+        const p = peek(); if (p && p.type === 'Operator' && p.value === op) return consume(); return null
+    }
+    function matchPunc(punc: string): ExprToken | null {
+        const p = peek(); if (p && p.type === 'Punctuation' && p.value === punc) return consume(); return null
+    }
+
+    function parsePipe(): ExprAST {
+        let base = parseEquality()
+        while (matchOp('|')) {
+            const id = matchType('Identifier')
+            if (!id) throw new Error("Expected identifier after pipe '|'")
+            const args: ExprAST[] = []
+            if (matchPunc(':')) {
+                args.push(parseEquality())
+                while (matchPunc(',')) args.push(parseEquality())
+            }
+            base = { type: 'Pipe', base, name: id.value, args }
+        }
+        return base
+    }
+
+    function parseEquality(): ExprAST {
+        let left = parsePrimary()
+        while (true) {
+            const p = peek()
+            if (p && p.type === 'Operator' && ['===', '!==', '==', '!=', '<', '>', '<=', '>='].includes(p.value)) {
+                const op = consume().value as string
+                const right = parsePrimary()
+                left = { type: 'Binary', operator: op, left, right }
+            } else break
+        }
+        return left
+    }
+
+    function parseBase(): ExprAST {
+        if (matchPunc('(')) {
+            const expr = parsePipe()
+            if (!matchPunc(')')) throw new Error("Expected ')'")
+            return expr
+        }
+        const str = matchType('String')
+        if (str) return { type: 'Literal', value: str.value }
+        const num = matchType('Number')
+        if (num) return { type: 'Literal', value: num.value }
+        const id = matchType('Identifier')
+        if (id) {
+            if (id.value === 'true') return { type: 'Literal', value: true }
+            if (id.value === 'false') return { type: 'Literal', value: false }
+            if (id.value === 'null') return { type: 'Literal', value: null }
+            if (id.value === 'undefined') return { type: 'Literal', value: undefined }
+            return { type: 'Identifier', name: id.value }
+        }
+        throw new Error(`Unexpected token in expression: ${JSON.stringify(peek())}`)
+    }
+
+    function parsePrimary(): ExprAST {
+        let expr = parseBase()
+        while (true) {
+            if (matchPunc('.')) {
+                const prop = matchType('Identifier')
+                if (!prop) throw new Error("Expected identifier after '.'")
+                expr = { type: 'Member', object: expr, property: prop.value, computed: false }
+            } else if (matchPunc('[')) {
+                const computedProp = parsePipe()
+                if (!matchPunc(']')) throw new Error("Expected ']'")
+                expr = { type: 'Member', object: expr, property: computedProp, computed: true }
+            } else break
+        }
+        return expr
+    }
+
+    const ast = parsePipe()
+    if (pos < tokens.length) throw new Error(`Unexpected extra tokens in expression: ${JSON.stringify(tokens.slice(pos))}`)
+    return ast
+}
+
+// ── Template Lexer ────────────────────────────────────────────────────────
+
+export type TemplateToken =
+    | { type: 'TEXT'; value: string }
+    | { type: 'INTERPOLATION'; value: string }
+    | { type: 'TAG'; name: string; inner: string | null }
+
+export function tokenizeTemplate(source: string): TemplateToken[] {
+    const tokens: TemplateToken[] = []
+    let cursor = 0
+    const length = source.length
+
+    while (cursor < length) {
         const nextInterp = source.indexOf('{{', cursor)
         const nextTag = source.indexOf('@', cursor)
 
@@ -43,238 +208,211 @@ export function tokenize(source: string): Token[] {
         let isTag = false
 
         if (nextInterp !== -1 && nextTag !== -1) {
-            if (nextTag < nextInterp) {
-                nextMatch = nextTag
-                isTag = true
-            } else {
-                nextMatch = nextInterp
-            }
+            if (nextTag < nextInterp) { nextMatch = nextTag; isTag = true }
+            else { nextMatch = nextInterp }
         } else if (nextInterp !== -1) {
             nextMatch = nextInterp
         } else if (nextTag !== -1) {
-            nextMatch = nextTag
-            isTag = true
+            nextMatch = nextTag; isTag = true
         }
 
         if (nextMatch === -1) {
-            // End of string is just text
-            if (cursor < length) {
-                tokens.push({ type: 'TEXT', value: source.slice(cursor) })
-            }
+            tokens.push({ type: 'TEXT', value: source.slice(cursor) })
             break
         }
 
-        // Push text before the match
         if (nextMatch > cursor) {
             tokens.push({ type: 'TEXT', value: source.slice(cursor, nextMatch) })
         }
 
         if (isTag) {
-            // Find the end of the tag line (newline or EOF)
-            const newlineIdx = source.indexOf('\n', nextMatch)
-            const endIdx = newlineIdx !== -1 ? newlineIdx : length
-            const tagLine = source.slice(nextMatch, endIdx).trim()
+            cursor = nextMatch + 1
+            let tagName = ''
+            const sub = source.slice(cursor)
+            if (sub.startsWith('else if')) { tagName = 'else if'; cursor += 7 }
+            else if (sub.startsWith('if')) { tagName = 'if'; cursor += 2 }
+            else if (sub.startsWith('else')) { tagName = 'else'; cursor += 4 }
+            else if (sub.startsWith('endif')) { tagName = 'endif'; cursor += 5 }
+            else if (sub.startsWith('for')) { tagName = 'for'; cursor += 3 }
+            else if (sub.startsWith('endfor')) { tagName = 'endfor'; cursor += 6 }
+            else if (sub.startsWith('const')) { tagName = 'const'; cursor += 5 }
+            else throw new Error(`Unknown tag at index ${cursor}: ${sub.slice(0, 10)}`)
 
-            // Some tags like @if(X) are followed tightly, others are full lines.
-            // We push the whole line as a TAG token. 
-            // If there's extra text on the line, we'll keep it simple: assume tags claim the whole line.
-            tokens.push({ type: 'TAG', value: tagLine })
-            cursor = endIdx + 1 // skip the newline
-        } else {
-            // Interpolation {{ ... }}
-            const endInterp = source.indexOf('}}', nextMatch)
-            if (endInterp === -1) {
-                throw new Error(`Unclosed interpolation starting at index ${nextMatch}`)
+            while (cursor < length && (source[cursor] === ' ' || source[cursor] === '\t')) cursor++
+
+            let inner: string | null = null
+            if (tagName === 'if' || tagName === 'else if' || tagName === 'for') {
+                if (source[cursor] !== '(') throw new Error(`Expected '(' after @${tagName}`)
+                cursor++
+                let depth = 1
+                let startInner = cursor
+                let inString: string | null = null
+                while (cursor < length && depth > 0) {
+                    const c = source[cursor]
+                    if (inString) {
+                        if (c === inString) inString = null
+                    } else {
+                        if (c === '"' || c === "'") inString = c
+                        else if (c === '(') depth++
+                        else if (c === ')') depth--
+                    }
+                    cursor++
+                }
+                if (depth > 0) throw new Error(`Unclosed '(' in @${tagName}`)
+                inner = source.slice(startInner, cursor - 1)
+            } else if (tagName === 'const') {
+                let startInner = cursor
+                while (cursor < length && source[cursor] !== '\n') cursor++
+                inner = source.slice(startInner, cursor).trim()
             }
-            tokens.push({ type: 'INTERPOLATION', value: source.slice(nextMatch + 2, endInterp).trim() })
-            cursor = endInterp + 2
+
+            if (source[cursor] === '\n') cursor++
+            else if (source[cursor] === '\r' && source[cursor + 1] === '\n') cursor += 2
+
+            tokens.push({ type: 'TAG', name: tagName, inner })
+        } else {
+            cursor = nextMatch + 2
+            let startInner = cursor
+            let inString: string | null = null
+            while (cursor < length) {
+                const c = source[cursor]
+                const next = source[cursor + 1]
+                if (inString) {
+                    if (c === inString) inString = null
+                    cursor++
+                } else {
+                    if (c === '"' || c === "'") { inString = c; cursor++ }
+                    else if (c === '}' && next === '}') break
+                    else cursor++
+                }
+            }
+            if (cursor >= length) throw new Error("Unclosed interpolation")
+            const expr = source.slice(startInner, cursor).trim()
+            cursor += 2
+            tokens.push({ type: 'INTERPOLATION', value: expr })
         }
     }
-
     return tokens
 }
 
-// ── Parser ───────────────────────────────────────────────────────────────
+// ── Template Parser ───────────────────────────────────────────────────────
 
-export function parse(tokens: Token[]): ASTNode[] {
+export type ASTNode =
+    | { type: 'TEXT'; content: string }
+    | { type: 'INTERPOLATION'; expression: ExprAST }
+    | { type: 'CONST'; name: string; expression: ExprAST }
+    | { type: 'IF'; condition: ExprAST; consequence: ASTNode[]; alternate: ASTNode[] | null }
+    | { type: 'FOR'; itemName: string; listExpression: ExprAST; body: ASTNode[] }
+
+export function parseTemplate(tokens: TemplateToken[]): ASTNode[] {
     let pos = 0
-
     function parseBlock(stopTags: string[]): ASTNode[] {
         const nodes: ASTNode[] = []
-
         while (pos < tokens.length) {
             const token = tokens[pos]
-
-            if (token.type === 'TAG' && stopTags.some(tag => token.value.startsWith(tag))) {
-                break
-            }
-
+            if (token.type === 'TAG' && stopTags.includes(token.name)) break
             pos++
-
             if (token.type === 'TEXT') {
                 nodes.push({ type: 'TEXT', content: token.value })
             } else if (token.type === 'INTERPOLATION') {
-                nodes.push({ type: 'INTERPOLATION', expression: token.value })
+                nodes.push({ type: 'INTERPOLATION', expression: parseExpression(token.value) })
             } else if (token.type === 'TAG') {
-                nodes.push(parseTag(token.value))
+                nodes.push(parseTagNode(token))
             }
         }
-
         return nodes
     }
 
-    function parseTag(tagStr: string): ASTNode {
-        if (tagStr.startsWith('@if')) {
-            return parseIf(tagStr)
-        }
-        if (tagStr.startsWith('@for')) {
-            return parseFor(tagStr)
-        }
-        if (tagStr.startsWith('@const')) {
-            return parseConst(tagStr)
-        }
-        throw new Error(`Unknown tag: ${tagStr}`)
-    }
-
-    function parseIf(initialTag: string): ASTNode {
-        const conditionMatch = initialTag.match(/@if\s*\((.*)\)/)
-        if (!conditionMatch) throw new Error(`Malformed @if: ${initialTag}`)
-        const condition = conditionMatch[1].trim()
-
-        const consequence = parseBlock(['@else', '@endif'])
-        let alternate: ASTNode[] | null = null
-
-        if (pos < tokens.length) {
-            const stopToken = tokens[pos].value
-            if (stopToken.startsWith('@else if')) {
-                // recursively parse else if as the alternate block
-                pos++ // consume the @else if (but wait, we need to pass the tag back to parseIf)
-                const elseIfTag = stopToken.replace('@else if', '@if')
-                alternate = [parseIf(elseIfTag)]
-            } else if (stopToken.startsWith('@else')) {
-                pos++ // consume @else
-                alternate = parseBlock(['@endif'])
-                pos++ // consume @endif
-            } else if (stopToken.startsWith('@endif')) {
-                pos++ // consume @endif
+    function parseTagNode(token: { type: 'TAG', name: string, inner: string | null }): ASTNode {
+        if (token.name === 'if') {
+            if (!token.inner) throw new Error("Missing condition for @if")
+            const condition = parseExpression(token.inner)
+            const consequence = parseBlock(['else if', 'else', 'endif'])
+            let alternate: ASTNode[] | null = null
+            if (pos < tokens.length) {
+                const stopToken = tokens[pos] as { type: 'TAG', name: string, inner: string | null }
+                if (stopToken.name === 'else if') {
+                    pos++
+                    stopToken.name = 'if'
+                    alternate = [parseTagNode(stopToken)]
+                } else if (stopToken.name === 'else') {
+                    pos++
+                    alternate = parseBlock(['endif'])
+                    pos++
+                } else if (stopToken.name === 'endif') {
+                    pos++
+                }
             }
+            return { type: 'IF', condition, consequence, alternate }
         }
-
-        return { type: 'IF', condition, consequence, alternate }
+        if (token.name === 'for') {
+            if (!token.inner) throw new Error("Missing params for @for")
+            const matchIndex = token.inner.indexOf(' of ')
+            if (matchIndex === -1) throw new Error(`Missing ' of ' in @for: ${token.inner}`)
+            const itemName = token.inner.slice(0, matchIndex).trim()
+            const listExpressionStr = token.inner.slice(matchIndex + 4)
+            const listExpression = parseExpression(listExpressionStr)
+            const body = parseBlock(['endfor'])
+            pos++
+            return { type: 'FOR', itemName, listExpression, body }
+        }
+        if (token.name === 'const') {
+            if (!token.inner) throw new Error("Missing params for @const")
+            const eqIndex = token.inner.indexOf('=')
+            if (eqIndex === -1) throw new Error(`Malformed @const, missing '=' in: ${token.inner}`)
+            const name = token.inner.slice(0, eqIndex).trim()
+            if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
+                throw new Error(`Malformed @const, invalid identifier: ${name}`)
+            }
+            const exprStr = token.inner.slice(eqIndex + 1).trim()
+            return { type: 'CONST', name, expression: parseExpression(exprStr) }
+        }
+        throw new Error(`Unexpected block tag: @${token.name}`)
     }
-
-    function parseFor(tagStr: string): ASTNode {
-        const match = tagStr.match(/@for\s*\(\s*(\w+)\s+of\s+(.*?)\s*\)/)
-        if (!match) throw new Error(`Malformed @for: ${tagStr}`)
-
-        const itemName = match[1]
-        const listExpression = match[2]
-
-        const body = parseBlock(['@endfor'])
-        pos++ // consume @endfor
-
-        return { type: 'FOR', itemName, listExpression, body }
-    }
-
-    function parseConst(tagStr: string): ASTNode {
-        const match = tagStr.match(/@const\s+(\w+)\s*=\s*(.*)/)
-        if (!match) throw new Error(`Malformed @const: ${tagStr}`)
-        return { type: 'CONST', name: match[1], expression: match[2] }
-    }
-
     return parseBlock([])
-}
-
-// ── Evaluator Utils ───────────────────────────────────────────────────────
-
-function evaluateExpression(expr: string, context: Context): any {
-    expr = expr.trim()
-
-    // Try treating it as a literal first
-    if (expr === 'true') return true
-    if (expr === 'false') return false
-    if (expr === 'null') return null
-    if (!isNaN(Number(expr))) return Number(expr)
-    if (expr.startsWith('"') && expr.endsWith('"')) return expr.slice(1, -1)
-    if (expr.startsWith("'") && expr.endsWith("'")) return expr.slice(1, -1)
-
-    // Handle basic equality operators for @if (a === b)
-    const equalityMatch = expr.match(/^(.*?)\s*(===|!==|==|!=|<|>|<=|>=)\s*(.*)$/)
-    if (equalityMatch) {
-        const left = evaluateExpression(equalityMatch[1], context)
-        const op = equalityMatch[2]
-        const right = evaluateExpression(equalityMatch[3], context)
-
-        switch (op) {
-            case '===': return left === right
-            case '!==': return left !== right
-            case '==': return left == right
-            case '!=': return left != right
-            case '<': return left < right
-            case '>': return left > right
-            case '<=': return left <= right
-            case '>=': return left >= right
-            default: return false
-        }
-    }
-
-    // Implicit safe traversal: a.b.c or a.b[0].c
-    // Convert [0] to .0 for uniform splitting
-    const path = expr.replace(/\[(\w+)\]/g, '.$1').split('.')
-
-    let current = context
-    for (const segment of path) {
-        if (current == null) return undefined
-        current = current[segment]
-    }
-
-    return current
-}
-
-function evaluateWithPipes(expr: string, context: Context, pipes: PipeRegistry = {}): any {
-    const parts = expr.split('|').map(p => p.trim())
-    const baseExpr = parts[0]
-    let value = evaluateExpression(baseExpr, context)
-
-    // Apply pipes left-to-right
-    for (let i = 1; i < parts.length; i++) {
-        const pipeStr = parts[i]
-        if (!pipeStr) continue
-
-        // e.g. "slice: '1,5'"
-        const pipeMatch = pipeStr.match(/^(\w+)(?:\s*:\s*(.*))?$/)
-        if (!pipeMatch) throw new Error(`Invalid pipe syntax: ${pipeStr}`)
-
-        const pipeName = pipeMatch[1]
-        const argsStr = pipeMatch[2]
-
-        const fn = pipes[pipeName]
-        if (!fn) throw new Error(`Unknown pipe: ${pipeName}`)
-
-        if (argsStr) {
-            // Evaluates args dynamically (literals and paths)
-            const args = argsStr.split(',').map(a => evaluateExpression(a.trim(), context))
-            value = fn(value, ...args)
-        } else {
-            value = fn(value)
-        }
-    }
-
-    return value
-}
-
-function processInterpolation(expr: string, context: Context, pipes: PipeRegistry): string {
-    const value = evaluateWithPipes(expr, context, pipes)
-    return value == null ? '' : String(value)
 }
 
 // ── Evaluator ─────────────────────────────────────────────────────────────
 
-export function evaluate(nodes: ASTNode[], context: Context, pipes: PipeRegistry = {}): string {
-    let output = ''
+export function evaluateExprAST(ast: ExprAST, context: Context, pipes: PipeRegistry = {}): any {
+    switch (ast.type) {
+        case 'Literal':
+            return ast.value
+        case 'Identifier':
+            return context[ast.name]
+        case 'Member': {
+            const obj = evaluateExprAST(ast.object, context, pipes)
+            if (obj == null) return undefined
+            const prop = ast.computed ? evaluateExprAST(ast.property as ExprAST, context, pipes) : ast.property as string
+            return obj[prop]
+        }
+        case 'Binary': {
+            const left = evaluateExprAST(ast.left, context, pipes)
+            const right = evaluateExprAST(ast.right, context, pipes)
+            switch (ast.operator) {
+                case '===': return left === right
+                case '!==': return left !== right
+                case '==': return left == right
+                case '!=': return left != right
+                case '<': return left < right
+                case '>': return left > right
+                case '<=': return left <= right
+                case '>=': return left >= right
+                default: return false
+            }
+        }
+        case 'Pipe': {
+            let base = evaluateExprAST(ast.base, context, pipes)
+            const fn = pipes[ast.name]
+            if (!fn) throw new Error(`Unknown pipe: ${ast.name}`)
+            const args = ast.args.map(a => evaluateExprAST(a, context, pipes))
+            return fn(base, ...args)
+        }
+    }
+}
 
-    // Clone context strictly for block-level lexical scoping
-    // BUT we mutate this exact clone when @const is hit in this block
+export function evaluateTemplate(nodes: ASTNode[], context: Context, pipes: PipeRegistry = {}): string {
+    let output = ''
     const localContext = { ...context }
 
     for (const node of nodes) {
@@ -282,46 +420,43 @@ export function evaluate(nodes: ASTNode[], context: Context, pipes: PipeRegistry
             case 'TEXT':
                 output += node.content
                 break
-            case 'INTERPOLATION':
-                output += processInterpolation(node.expression, localContext, pipes)
+            case 'INTERPOLATION': {
+                const val = evaluateExprAST(node.expression, localContext, pipes)
+                output += (val == null ? '' : String(val))
                 break
+            }
             case 'CONST':
                 if (Object.prototype.hasOwnProperty.call(localContext, node.name)) {
                     throw new Error(`TemplateError: Cannot shadow or redefine constant '${node.name}'`)
                 }
-                localContext[node.name] = evaluateWithPipes(node.expression, localContext, pipes)
+                localContext[node.name] = evaluateExprAST(node.expression, localContext, pipes)
                 break
             case 'IF': {
-                const condValue = evaluateWithPipes(node.condition, localContext, pipes)
+                const condValue = evaluateExprAST(node.condition, localContext, pipes)
                 if (condValue) {
-                    output += evaluate(node.consequence, localContext, pipes)
+                    output += evaluateTemplate(node.consequence, localContext, pipes)
                 } else if (node.alternate) {
-                    output += evaluate(node.alternate, localContext, pipes)
+                    output += evaluateTemplate(node.alternate, localContext, pipes)
                 }
                 break
             }
             case 'FOR': {
-                const listValue = evaluateWithPipes(node.listExpression, localContext, pipes)
+                const listValue = evaluateExprAST(node.listExpression, localContext, pipes)
                 if (Array.isArray(listValue)) {
                     for (const item of listValue) {
-                        // New block scope for each loop iteration
                         const loopContext = { ...localContext, [node.itemName]: item }
-                        output += evaluate(node.body, loopContext, pipes)
+                        output += evaluateTemplate(node.body, loopContext, pipes)
                     }
                 }
                 break
             }
         }
     }
-
     return output
 }
 
-/**
- * Main Template Compilation Entrypoint
- */
 export function render(templateStr: string, context: Context, pipes: PipeRegistry = {}): string {
-    const tokens = tokenize(templateStr)
-    const ast = parse(tokens)
-    return evaluate(ast, context, pipes)
+    const tokens = tokenizeTemplate(templateStr)
+    const ast = parseTemplate(tokens)
+    return evaluateTemplate(ast, context, pipes)
 }
