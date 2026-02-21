@@ -338,4 +338,100 @@ Code: {{ open }} user.name {{ close }}
 `.trim()
     expect(render(tpl3, { user: { status: "ACTIVE (ignore this)" } }).trim()).toBe("Status is: @if(true) nested @endif")
   })
+
+  it('Syntax Polyglot & Cross-Language Interference', () => {
+    // These tests mix syntaxes from other engines (Jinja, Razor, Blade, Handlebars, JSX)
+    // and structural languages (Python, PHP, C#, Bash) to prove our engine only executes its own domain.
+
+    // (@Model.User)
+    // Our Lexer must ignore `@Model` because it doesn't match `@if`, `@for`, etc.
+    const razorTpl = `<div>@Model.UserName - @if(user.exists) FOUND @endif</div>`
+    expect(render(razorTpl, { user: { exists: true } })).toBe('<div>@Model.UserName -  FOUND </div>')
+
+    // ({% if %}, {# comment #})
+    const pythonTpl = `
+def print_user():
+    # {% if user.is_active %}
+    print("{{ user.name }}") # Outputs native interpolation
+    # {% endif %}
+    @const result = user.name
+    return "{{ result }}"
+`
+    const expectedPython = `def print_user(): # {% if user.is_active %} print("Alice") # Outputs native interpolation # {% endif %} return "Alice"`
+    expect(render(pythonTpl, { user: { name: "Alice" } }).replace(/\s+/g, ' ').trim()).toBe(expectedPython)
+
+    // ({user.name} vs {{user.name}})
+    // Only double braces get executed, single braces get passed as text.
+    const jsxTpl = `<div className={styles.container}>{user.name} is actually {{ user.name }}</div>`
+    expect(render(jsxTpl, { user: { name: "Alice" } })).toBe('<div className={styles.container}>{user.name} is actually Alice</div>')
+
+    // Engine must ignore @foreach and <?php tags.
+    const bladeTpl = `
+<?php echo $var; ?>
+@foreach($users as $u)
+  @for (u of users)
+    {{ u }}
+  @endfor
+@endforeach
+`
+    const expectedBlade = `<?php echo $var; ?> @foreach($users as $u) Bob @endforeach`
+    expect(render(bladeTpl, { users: ["Bob"] }).replace(/\s+/g, ' ').trim()).toBe(expectedBlade)
+
+    // Bash script Interference ($USER, ${USER})
+    const bashTpl = `
+#!/bin/bash
+export THE_USER="{{ sys.user }}"
+echo $THE_USER
+echo \${THE_USER}
+@if (sys.isRoot)
+sudo rm -rf /
+@endif
+`
+    const expectedBash = `#!/bin/bash export THE_USER="admin" echo $THE_USER echo \${THE_USER} sudo rm -rf /`
+    expect(render(bashTpl, { sys: { user: "admin", isRoot: true } }).replace(/\s+/g, ' ').trim()).toBe(expectedBash)
+
+    // Triple Curly Interference ({{{ user.name }}})
+    // Emulates Vue's v-html raw injection braces.
+    // Our lexer matches the outermost {{ and }} and passes `{ param }` to the expression parser.
+    // Since our strict expression parser explicitly forbids JSON objects (no Javascript `{` or `}`), this safely throws a syntax error!
+    const handlebarsTpl = `{{{ param }}}`
+    expect(() => render(handlebarsTpl, { param: "value" })).toThrow(/Unexpected character in expression at index 0: \{/)
+
+    const erbTpl = `<%= user.id %> / <%- @for (num of arr) -%>{{ num }}<%- @endfor -%>`
+    // Note: The space after `)` in `@for (num of arr) -%>` is preserved as text
+    const expectedErb = `<%= user.id %> / <%-  -%>1<%- -%>`
+    expect(render(erbTpl, { arr: [1] })).toBe(expectedErb)
+
+    const jsTpl = `
+const greeting = \`Hello \${user.name}\`;
+@const name = "Bob"
+const override = \`Hello {{ name }}\`;
+`
+    const expectedJs = `const greeting = \`Hello \${user.name}\`; const override = \`Hello Bob\`;`
+    expect(render(jsTpl, {}).replace(/\s+/g, ' ').trim()).toBe(expectedJs)
+
+    const mdTpl = `
+\`\`\`ts
+@for (item of items)
+console.log("{{ item }}");
+@endfor
+\`\`\`
+`
+    const expectedMd = `\`\`\`ts console.log("X"); \`\`\``
+    expect(render(mdTpl, { items: ["X"] }).replace(/\s+/g, ' ').trim()).toBe(expectedMd)
+
+    const javaTpl = `
+@RestController
+@RequestMapping("/api")
+public class App {
+  @Autowired
+  private Service service;
+  // @if (java.generateSetter)
+  public void setService(Service s) { this.service = s; }
+  // @endif
+}
+`
+    const expectedJava = `@RestController @RequestMapping("/api") public class App { @Autowired private Service service; // public void setService(Service s) { this.service = s; } // }`
+    expect(render(javaTpl, { java: { generateSetter: true } }).replace(/\s+/g, ' ').trim()).toBe(expectedJava)
+  })
 })

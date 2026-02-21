@@ -243,8 +243,8 @@ export function tokenizeTemplate(source: string): TemplateToken[] {
             let isValidTag = false
             if (tagName !== '') {
                 const nextChar = sub[tagLen]
-                // Valid boundaries: whitespace, newline, or a parenthesis
-                if (nextChar === undefined || nextChar === ' ' || nextChar === '\t' || nextChar === '\n' || nextChar === '\r' || nextChar === '(') {
+                // Valid boundaries: anything that is not a continuing identifier character
+                if (nextChar === undefined || !/^[a-zA-Z0-9_$]$/.test(nextChar)) {
                     isValidTag = true
                 }
             }
