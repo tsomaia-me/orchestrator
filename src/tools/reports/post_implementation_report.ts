@@ -4,7 +4,7 @@ import { exchanges } from '../../db/schema';
 import { EngineerReportSchema } from '../../schema';
 import crypto from 'crypto';
 import { templateManager } from '../../template-manager';
-import { getProjectRoot } from '../../helpers';
+import { getProjectRootForTask } from '../../helpers';
 
 export default {
     name: 'post_implementation_report',
@@ -41,7 +41,7 @@ export default {
             });
         } catch (err: any) {
             if (err.message && err.message.includes('UNIQUE constraint failed')) {
-                templateManager.initialize(getProjectRoot());
+                templateManager.initialize(await getProjectRootForTask(data.taskId));
                 const newHead = await db.query.exchanges.findFirst({
                     where: (exchanges, { eq }) => eq(exchanges.taskId, data.taskId),
                     orderBy: (exchanges, { desc }) => [desc(exchanges.createdAt)]

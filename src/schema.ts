@@ -93,4 +93,6 @@ export const SetActiveFeatureSchema = z.object({
   featureId: z.string().describe('Unique identifier for the feature, e.g., \'user-auth\''),
 })
 
-export const AwaitUpdateSchema = z.object({})
+export const AwaitUpdateSchema = z.object({
+  taskId: z.string().describe('The task ID to await updates for (from the Planner or briefing context).'),
+})

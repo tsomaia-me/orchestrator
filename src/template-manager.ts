@@ -5,6 +5,7 @@ import { render as engineRender, Context } from '@tsomaiatech/moxite'
 // Built-in pipes available to all templates (e.g. `{{ data | json }}`)
 const defaultPipes = {
     json: (val: any) => JSON.stringify(val, null, 2),
+    dump: (val: any) => JSON.stringify(val, null, 2),
     upper: (val: string) => typeof val === 'string' ? val.toUpperCase() : val,
 }
 

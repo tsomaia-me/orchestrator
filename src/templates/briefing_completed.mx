@@ -1,4 +1,9 @@
-This task is COMPLETED. The Head Planner must now decide the next move.
+This task is COMPLETED.
+@if (nextTask)
+Next task: {{ nextTask.id }}. Engineer and Reviewer should call await_* with taskId: "{{ nextTask.id }}".
+@else
+The Head Planner must now decide the next move.
+@endif
 
 ---
 ### ACTIVE TASK:

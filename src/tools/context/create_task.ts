@@ -11,6 +11,18 @@ export default {
     handler: async (data: z.infer<typeof CreateTaskSchema>) => {
         const taskId = data.taskId;
 
+        const existing = await db.query.tasks.findFirst({
+            where: (t, { eq }) => eq(t.id, data.taskId),
+        });
+        if (existing) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Task "${data.taskId}" already exists in feature "${data.featureId}". Use a different taskId or skip this task. Each taskId must be unique within the project.`
+                }]
+            };
+        }
+
         const taskPayload = {
             id: taskId,
             featureId: data.featureId,
@@ -40,10 +52,22 @@ export default {
         };
 
         // Drizzle transaction for atomic insert of Task + Genesis Exchange
-        await db.transaction(async (tx) => {
-            await tx.insert(tasks).values(taskPayload);
-            await tx.insert(exchanges).values(exchangePayload);
-        });
+        try {
+            await db.transaction(async (tx) => {
+                await tx.insert(tasks).values(taskPayload);
+                await tx.insert(exchanges).values(exchangePayload);
+            });
+        } catch (err: any) {
+            if (err?.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || (err?.message?.includes('UNIQUE constraint failed') && err?.message?.includes('tasks'))) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `Task "${data.taskId}" already exists. Another agent may have created it. Use a different taskId or proceed with the existing task.`
+                    }]
+                };
+            }
+            throw err;
+        }
 
         return { content: [{ type: 'text', text: `Task ${taskId} created and Genesis Exchange dispatched.` }] };
     }

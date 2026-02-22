@@ -3,6 +3,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import readline from 'readline';
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'node:fs';
 
 const PORT = 3456;
 const DAEMON_URL = `http://localhost:${PORT}`;
@@ -17,8 +18,13 @@ async function isDaemonRunning() {
 }
 
 async function startDaemon() {
-    const mcpPath = path.join(__dirname, '..', 'mcp.ts');
-    const p = spawn('npx', ['tsx', mcpPath], {
+    const dir = path.join(__dirname, '..');
+    const mcpJs = path.join(dir, 'mcp.js');
+    const mcpTs = path.join(dir, 'mcp.ts');
+    const mcpPath = fs.existsSync(mcpJs) ? mcpJs : mcpTs;
+    const isJs = mcpPath.endsWith('.js');
+
+    const p = spawn(isJs ? 'node' : 'npx', isJs ? [mcpPath] : ['tsx', mcpPath], {
         detached: true,
         stdio: 'ignore'
     });

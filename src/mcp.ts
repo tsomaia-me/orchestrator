@@ -22,14 +22,14 @@ app.get('/ping', (req, res) => res.status(200).send('pong'));
 
 // Handle multiple incoming IDE connections seamlessly
 app.get('/sse', async (req, res) => {
-  const sessionId = Math.random().toString(36).substring(2, 11);
-  const transport = new SSEServerTransport(`/message?sessionId=${sessionId}`, res);
-  transports.set(sessionId, transport);
+  const transport = new SSEServerTransport('/message', res);
+  // Store the transport using the SDK-generated session ID
+  transports.set(transport.sessionId, transport);
 
   await server.connect(transport);
 
   res.on('close', () => {
-    transports.delete(sessionId);
+    transports.delete(transport.sessionId);
   });
 });
 

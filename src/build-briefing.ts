@@ -1,7 +1,7 @@
 import { db } from './db';
 import { exchanges, tasks, features, projects } from './db/schema';
 import { templateManager } from './template-manager';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, gt, asc } from 'drizzle-orm';
 
 /**
  * Builds a briefing response for a specific task based on the SQLite ledger.
@@ -37,7 +37,48 @@ export async function buildBriefing(taskId: string): Promise<{ content: [{ type:
     }
   }
 
-  const ctx = { task: taskRow, exchange: head };
+  const phase = head.type === 'STAGE_DIRECTIVE'
+    ? 'AWAITING_IMPLEMENTATION_REPORT'
+    : head.type === 'IMPLEMENTATION_REPORT' || head.type === 'COMMENTS_RESOLUTION'
+      ? 'AWAITING_REVIEW'
+      : head.type === 'REJECTION'
+        ? 'AWAITING_COMMENTS_RESOLUTION'
+        : 'COMPLETED';
+
+  const handoff =
+    head.type === 'IMPLEMENTATION_REPORT' || head.type === 'COMMENTS_RESOLUTION'
+      ? { type: 'report' as const, data: head.payload }
+      : head.type === 'REJECTION'
+        ? { type: 'rejection' as const, data: head.payload }
+        : head.type === 'APPROVAL'
+          ? { type: 'approval' as const, data: head.payload }
+          : null;
+
+  const task = {
+    taskId: taskRow.id,
+    featureId: taskRow.featureId,
+    phase,
+    spec: {
+      objective: taskRow.objective,
+      requirements: taskRow.requirements ?? [],
+      constraints: taskRow.constraints ?? [],
+    },
+    handoff,
+  };
+
+  let nextTask: { id: string } | null = null;
+  if (head.type === 'APPROVAL' && featureRow) {
+    const nextArr = await db.select({ id: tasks.id }).from(tasks)
+      .where(and(
+        eq(tasks.featureId, taskRow.featureId),
+        gt(tasks.createdAt, taskRow.createdAt)
+      ))
+      .orderBy(asc(tasks.createdAt))
+      .limit(1);
+    nextTask = nextArr[0] ?? null;
+  }
+
+  const ctx = { task, exchange: head, nextTask };
 
   let templateName = 'briefing_unknown_phase.mx';
   switch (head.type) {

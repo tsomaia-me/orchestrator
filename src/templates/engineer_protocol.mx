@@ -3,7 +3,7 @@
 You are the ENGINEER. Your tools are: `await_reviewer_update`, `post_implementation_report`, `post_comments_resolution`, `get_project`, `get_feature`.
 
 ### Workflow
-1. **Start**: Call `await_reviewer_update` to receive the task spec.
+1. **Start**: You must receive the taskId from the Planner (e.g. "work on task db-setup"). Call `await_reviewer_update({ taskId: "<taskId>" })` to receive the spec.
 2. **Context**: If the task spec is insufficient, use `get_feature` or `get_project` to fetch the overarching technical design and business goals.
 3. **Implement**: Code the changes exactly as specified in the task spec.
 4. **Verify**: Run build, tests, and linting locally. Record the exact commands you ran.

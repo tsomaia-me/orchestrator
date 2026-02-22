@@ -4,4 +4,9 @@
 3. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., `db-setup` -> `auth-api` -> `login-ui`).
 4. **Validate**: Present the proposed list of tasks to the user. **STOP and wait for manual approval.**
 5. **Execute**: Only after user confirmation, call `create_task` for every item in the plan. You must pass the `feature_id` from step 2. This creates the Genesis node in the ledger.
-6. **Handoff**: Once all tasks are created, the Reviewer and Engineer agents can begin. The Reviewer should call `await_engineer_update` and the Engineer should call `await_reviewer_update`.
+6. **Handoff**: Once all tasks are created, you MUST launch the Engineer and Reviewer subagents in parallel using Cursor's subagent feature.
+   - Mention `@engineer` and instruct it to `load_engineer_protocol({ projectRoot })`.
+   - Mention `@reviewer` and instruct it to `load_reviewer_protocol({ projectRoot })`.
+   - When launching, explicitly tell Engineer and Reviewer which taskId(s) to use.
+   - Example: "Engineer: load_engineer_protocol, then call await_reviewer_update with taskId: 'db-setup' (first task)."
+   - Tell both to proceed with the relay workflow and not return until finished. If they return early saying they are waiting, immediately re-invoke them.

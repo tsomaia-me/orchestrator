@@ -1,145 +1,109 @@
-# Relay: Local-First Agent Coordination Server
+# Relay: Agent-to-Agent Coordination MCP Server
 
-**Relay** is a Model Context Protocol (MCP) server that enables **autonomous coordination** between AI agents (Architect & Engineer) directly within your local codebase. It provides a structured, state-machine-driven environment for planning, executing, and verifying complex coding tasks without the bureaucracy of external project management tools.
+**Relay** is a Model Context Protocol (MCP) server that coordinates three AI roles—**Planner**, **Engineer**, and **Reviewer**—through a SQLite ledger. It provides a structured workflow for planning features, implementing tasks, and verifying code quality with an append-only exchange chain and in-process event bus.
 
-## 🚀 Key Features
+## Key Features
 
--   **Bureaucracy down to minimum**: State is managed purely via local files in `.relay/`.
--   **Structured Protocol**: Enforces a strict **Architect (Plan) -> Engineer (Execute) -> Architect (Review)** loop.
--   **Atomic Locking**: Prevents race conditions when multiple agents try to write state simultaneously.
--   **Local-First**: All data lives in your repo. Git-friendly JSON/Markdown storage.
--   **Observability**: Structured logs in `.relay/tasks.jsonl` for full audit trails.
+- **SQLite ledger**: State stored at `~/.relay/ledger.db` with blockchain-style hash chaining.
+- **Three roles**: Planner decomposes features; Engineer implements; Reviewer approves or rejects.
+- **Event-driven await**: Engineer and Reviewer block on MCP tools until the other agent submits; no polling.
+- **SSE transport**: Runs as an HTTP server (port 3456) with Server-Sent Events for IDE connections.
+- **Templates**: Moxite-based briefings; overridable via `{projectRoot}/.relay/templates/`.
 
 ---
 
-## 📦 Installation
-
-Relay is designed to be run as a local MCP server.
+## Installation
 
 ### Prerequisites
--   Node.js >= 18
--   npm or pnpm
+
+- Node.js >= 18
+- npm or pnpm
 
 ### Setup
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/tsomaia/relay.git
-    cd relay
-    ```
 
-2.  **Install & Build**:
+1. **Install & build**:
     ```bash
     npm install
     npm run build
     ```
 
-3.  **Verify**:
+2. **Verify**:
     ```bash
     npm run start
-    # Should output: Relay MCP Server running...
+    # Should output: Relay Daemon listening on port 3456
     ```
 
 ---
 
-## 🛠️ Configuration
+## Configuration
 
-To use Relay with your AI IDE (Cursor, Windsurf) or Claude Desktop, add it to your `mcpServers` configuration.
+Add Relay to your MCP settings (e.g. `~/.cursor/mcp.json`):
 
-### Cursor / Windsurf / Claude Desktop
-
-Add this to your MCP settings file (typically `~/.cursor/mcp.json` or similar):
-
-**Option A — Path-free (recommended, requires npm):**
 ```json
 {
   "mcpServers": {
     "relay": {
       "command": "npx",
-      "args": ["-y", "orchestrator-relay", "mcp"]
+      "args": ["-y", "orchestrator-relay"]
     }
   }
 }
 ```
 
-**Option A2 — With explicit project root (fixes wrong cwd when Cursor spawns from ~/):**
-```json
-{
-  "mcpServers": {
-    "relay": {
-      "command": "npx",
-      "args": ["-y", "orchestrator-relay", "mcp"],
-      "env": {
-        "RELAY_ROOT": "/absolute/path/to/your/project"
-      }
-    }
-  }
-}
-```
-Replace the path with your project root. On Windows, use forward slashes or escaped backslashes.
-
-**Option B — Local clone:**
-```json
-{
-  "mcpServers": {
-    "relay": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/relay/dist/shell/mcp.js"]
-    }
-  }
-}
-```
-*Replace `/ABSOLUTE/PATH/TO/relay` with the actual path where you cloned the repo.*
+The `relay` CLI starts the daemon if needed and connects via SSE to `http://localhost:3456`.
 
 ---
 
-## 🤖 Usage
+## Tools
 
-Once connected, your AI agents will have access to the **Relay Toolset**.
+### Planner
 
-### Roles
+- `load_planner_protocol` — Initialize and load the Planner protocol.
+- `create_project` — Register a project with root path and business goals.
+- `propose_feature` — Define a feature with technical specs and acceptance criteria.
+- `create_task` — Create a task and genesis exchange in the ledger.
+- `get_project`, `get_feature` — Fetch context.
 
-Relay defines two distinct roles embedded in the protocol:
+### Engineer
 
-1.  **Architect** (`relay://prompts/architect`)
-    -   **Goal**: Plan tasks, review code, and provide directives.
-    -   **Tools**: `plan_task`, `submit_directive`.
-    -   **Context**: Sees the big picture and the Engineer's reports.
+- `load_engineer_protocol` — Initialize and load the Engineer protocol.
+- `await_reviewer_update` — Wait for Reviewer’s approval/rejection; returns briefing.
+- `post_implementation_report` — Submit implementation report.
+- `post_comments_resolution` — Submit fixes after rejection.
+- `get_project`, `get_feature` — Fetch context.
 
-2.  **Engineer** (`relay://prompts/engineer`)
-    -   **Goal**: Execute directives, write code, and verify fixes.
-    -   **Tools**: `submit_report`.
-    -   **Context**: Sees the specific Directive to implement.
+### Reviewer
 
-### The Protocol Loop
-
-1.  **Start**: Architect calls `plan_task("Feature X", "Description...")`.
-    -   *State*: `planning`
-2.  **Direct**: Architect calls `submit_directive(taskId, "## EXECUTE...", decision="REJECT")`.
-    -   *State*: `waiting_for_engineer`
-3.  **Execute**: Engineer reads directive, writes code, tests it.
-4.  **Report**: Engineer calls `submit_report(taskId, "## CHANGES...", status="COMPLETED")`.
-    -   *State*: `waiting_for_architect`
-5.  **Review**: Architect reads report.
-    -   If good: `submit_directive(..., decision="APPROVE")`. -> **Task Complete**.
-    -   If bad: `submit_directive(..., decision="REJECT")`. -> **Loop back to Step 2**.
+- `load_reviewer_protocol` — Initialize and load the Reviewer protocol.
+- `await_engineer_update` — Wait for Engineer’s report/resolution; returns briefing.
+- `post_approval` — Approve Engineer’s work.
+- `post_rejection` — Reject with required fixes.
 
 ---
 
-## 🔍 Observability
+## Workflow
 
-Relay keeps a transparent record of all activities in your project root:
+1. **Planner**: `load_planner_protocol` → Scope → Decompose → Validate (user approval) → `create_task` × N → Launch Engineer & Reviewer subagents in parallel.
+2. **Engineer**: `await_reviewer_update({ taskId })` → Implement → `post_implementation_report` → `await_reviewer_update` → Loop (or handle rejection).
+3. **Reviewer**: `await_engineer_update({ taskId })` → Review → `post_approval` or `post_rejection` → `await_engineer_update` → Loop.
 
--   **.relay/state.json**: The current "Head" of the state machine (Active Task, Status).
--   **.relay/tasks.jsonl**: A structured log of all tasks started and their metadata.
--   **.relay/exchanges/**: Markdown files containing the actual content of every Directive and Report, versioned by iteration (e.g., `001-002-engineer-feat-x.md`).
+Engineer and Reviewer coordinate via the SQLite ledger. The `await_*` tools block (with 5‑minute timeout) until the other agent submits; the event bus unblocks them when state advances.
 
 ---
 
-## ⚠️ Troubleshooting
+## Data Storage
 
--   **".relay created in wrong place (e.g. ~/)"**: Cursor may spawn MCP with cwd = home. Use `RELAY_ROOT` in your mcp.json (see Option A2 above) to force the project root.
--   **"Task stuck in loop"**: Ensure the Architect uses `decision: "APPROVE"` to close the task.
--   **"Lock file exists"**: If Relay crashes, a `relay.lock` file might remain in `.relay/`. It automatically expires after 1 hour, or you can manually delete it.
+- **Ledger**: `~/.relay/ledger.db` — Projects, features, tasks, and exchanges (append-only chain).
+- **Templates**: `{projectRoot}/.relay/templates/` — User overrides for briefing and protocol templates.
+
+---
+
+## Troubleshooting
+
+- **Wrong project root**: Cursor may spawn MCP with `cwd = ~/`. Pass `projectRoot` explicitly in `load_*_protocol` calls (derived from workspace root).
+- **Duplicate task crash**: `create_task` with an existing `taskId` returns a friendly message; no SqliteError.
+- **Wait timeout**: If `await_*` times out after 5 minutes, re-call the tool or check that the other agent has submitted.
+- **Concurrent write conflict**: If both agents submit at once, one gets `STATE_CHANGED_WHILE_AWAITING_LOCK`; call `await_*` again to get the updated state.
 
 ---
 
