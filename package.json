@@ -13,7 +13,8 @@
     "start": "node dist/mcp.js",
     "inspector": "npx @modelcontextprotocol/inspector node dist/mcp.js",
     "prepublishOnly": "npm run build",
-    "test": "jest"
+    "test": "jest",
+    "test:integration": "RELAY_AWAIT_TIMEOUT_MS=400 npx tsx scripts/test-await-timeout.ts"
   },
   "files": [
     "dist/",

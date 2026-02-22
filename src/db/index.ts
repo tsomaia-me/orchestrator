@@ -5,12 +5,13 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 
-const dbDir = path.join(os.homedir(), '.relay');
+const dbPath = process.env.RELAY_DB_PATH || path.join(os.homedir(), '.relay', 'ledger.db');
+const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const sqlite = new Database(path.join(dbDir, 'ledger.db'));
+const sqlite = new Database(dbPath);
 // Enable WAL mode for better concurrency
 sqlite.pragma('journal_mode = WAL');
 

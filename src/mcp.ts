@@ -6,30 +6,33 @@ import { TOOLS } from './tools/index.js';
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-const server = new McpServer({
-  name: 'Relay Daemon',
-  version: '3.0.0'
-});
-
-// Register all modular tools
-TOOLS.forEach((t) => {
-  server.tool(t.name, t.description, t.inputSchema.shape, t.handler as any);
-});
+function createServer(): McpServer {
+  const server = new McpServer({
+    name: 'Relay Daemon',
+    version: '3.0.0'
+  });
+  TOOLS.forEach((t) => {
+    server.tool(t.name, t.description, t.inputSchema.shape, t.handler as any);
+  });
+  return server;
+}
 
 const transports = new Map<string, SSEServerTransport>();
 
 app.get('/ping', (req, res) => res.status(200).send('pong'));
 
-// Handle multiple incoming IDE connections seamlessly
+// One McpServer per SSE connection (MCP spec: 1:1 client-server)
 app.get('/sse', async (req, res) => {
   const transport = new SSEServerTransport('/message', res);
-  // Store the transport using the SDK-generated session ID
-  transports.set(transport.sessionId, transport);
-
+  const server = createServer();
   await server.connect(transport);
+  transports.set(transport.sessionId, transport);
 
   res.on('close', () => {
     transports.delete(transport.sessionId);
+    if (typeof server.close === 'function') {
+      server.close().catch(() => {});
+    }
   });
 });
 

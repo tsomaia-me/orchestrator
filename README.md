@@ -102,8 +102,9 @@ Engineer and Reviewer coordinate via the SQLite ledger. The `await_*` tools bloc
 
 - **Wrong project root**: Cursor may spawn MCP with `cwd = ~/`. Pass `projectRoot` explicitly in `load_*_protocol` calls (derived from workspace root).
 - **Duplicate task crash**: `create_task` with an existing `taskId` returns a friendly message; no SqliteError.
-- **Wait timeout**: If `await_*` times out after 5 minutes, re-call the tool or check that the other agent has submitted.
+- **Wait timeout**: If `await_*` times out, re-call the tool or check that the other agent has submitted. Set `RELAY_AWAIT_TIMEOUT_MS` (milliseconds) to change the timeout; default: 300000 (5 minutes).
 - **Concurrent write conflict**: If both agents submit at once, one gets `STATE_CHANGED_WHILE_AWAITING_LOCK`; call `await_*` again to get the updated state.
+- **Planner session ends unexpectedly**: If the Planner chat is closed or Cursor restarts while Engineer and Reviewer are running, the subagents may keep running until they hit their next await timeout. **Recovery:** Start a new Planner session, use `get_feature` / `get_project` to inspect existing state, and relaunch Engineer and Reviewer with the active `taskId`. They will receive the current briefing from the ledger; no state is lost.
 
 ---
 
