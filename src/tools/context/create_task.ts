@@ -9,7 +9,7 @@ export default {
     description: 'Creates a new task within a feature and dispatches the Genesis Directive to the Engineer.',
     inputSchema: CreateTaskSchema,
     handler: async (data: z.infer<typeof CreateTaskSchema>) => {
-        const taskId = 'task_' + crypto.randomUUID().replace(/-/g, '').substring(0, 10);
+        const taskId = data.taskId;
 
         const taskPayload = {
             id: taskId,
