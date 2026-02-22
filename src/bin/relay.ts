@@ -1,56 +1,70 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
-import packageJson from '../../package.json';
-import fs from 'fs-extra';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import readline from 'readline';
+import { spawn } from 'child_process';
 import path from 'path';
-import { initialize } from '../helpers';
-import { FilePersistence } from '../persistence/file-persistence';
-import { templateManager } from '../template-manager';
 
-const program = new Command();
+const PORT = 3456;
+const DAEMON_URL = `http://localhost:${PORT}`;
 
-program
-    .name('relay')
-    .description('Relay: Autonomous Agent Orchestrator')
-    .version(packageJson.version);
+async function isDaemonRunning() {
+    try {
+        const res = await fetch(`${DAEMON_URL}/ping`);
+        return res.status === 200;
+    } catch {
+        return false;
+    }
+}
 
-program.command('init')
-    .description('Initialize a new Relay project in the current directory')
-    .action(async () => {
+async function startDaemon() {
+    const mcpPath = path.join(__dirname, '..', 'mcp.ts');
+    const p = spawn('npx', ['tsx', mcpPath], {
+        detached: true,
+        stdio: 'ignore'
+    });
+    p.unref();
+
+    for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        if (await isDaemonRunning()) return;
+    }
+    throw new Error('Daemon failed to start');
+}
+
+async function main() {
+    if (!(await isDaemonRunning())) {
+        await startDaemon();
+    }
+
+    const transport = new SSEClientTransport(new URL(`${DAEMON_URL}/sse`));
+    await transport.start();
+
+    transport.onmessage = (msg) => {
+        process.stdout.write(JSON.stringify(msg) + '\n');
+    };
+
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false
+    });
+
+    rl.on('line', async (line) => {
+        if (!line.trim()) return;
         try {
-            console.log('Initializing Relay...');
-            const projectRoot = process.cwd();
-            const persistence = new FilePersistence(path.join(projectRoot, '.relay/state.json'));
-
-            initialize(projectRoot, persistence);
-
-            templateManager.initialize(projectRoot);
-            templateManager.copyAllDefaultsToProject(projectRoot);
-
-            const cursorSrc = path.join(__dirname, '../cursor'); // dist/bin/../cursor -> dist/cursor
-            const cursorDest = path.join(process.cwd(), '.cursor');
-
-            if (await fs.pathExists(cursorSrc)) {
-                console.log(`Copying cursor agents to ${cursorDest}...`);
-                await fs.copy(cursorSrc, cursorDest, { overwrite: true });
-                console.log('Cursor agents installed successfully.');
-            } else {
-                console.warn(`Warning: source cursor directory not found at ${cursorSrc}`);
-            }
-        } catch (error: any) {
-            console.error('Init failed:', error.message);
-            process.exit(1);
+            const msg = JSON.parse(line);
+            await transport.send(msg);
+        } catch (e) {
+            // Ignore invalid JSON lines from IDE
         }
     });
 
-program.command('mcp')
-    .description('Start the MCP server (stdio transport). Used by Cursor, Windsurf, Claude Desktop.')
-    .action(async () => {
-        await import('../mcp.js');
-    });
-
-program.parse(process.argv);
-
-if (!process.argv.slice(2).length) {
-    program.outputHelp();
+    transport.onclose = () => {
+        process.exit(0);
+    };
 }
+
+main().catch((err) => {
+    console.error('Bridge Error:', err);
+    process.exit(1);
+});

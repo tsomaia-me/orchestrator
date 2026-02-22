@@ -93,7 +93,7 @@ export type TaskEventType =
   | 'post_rejection'
   | 'post_comments_resolution'
   | 'completed'
-export type TaskEventName =
-  | 'set_active_task'
-  | `${FeatureId}.${TaskId}.${TaskEventType}`
-export type TaskEventListener = (task: TaskState) => void
+
+export type TaskEventName = `${TaskId}.${TaskEventType}`
+
+export type TaskEventListener = (payload: any) => void

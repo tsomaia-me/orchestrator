@@ -32,3 +32,5 @@ export class EventListener {
     }
   }
 }
+
+export const eventBus = new EventListener()

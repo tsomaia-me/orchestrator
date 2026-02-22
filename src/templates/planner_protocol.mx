@@ -1,6 +1,7 @@
 ## Head Planner Protocol
-1. **Scope**: Analyze the user's high-level feature request. Identify dependencies and the "Definition of Done."
-2. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., \`db-setup\` -> \`auth-api\` -> \`login-ui\`).
-3. **Validate**: Present the proposed list of \`taskId\`s and \`objectives\` to the user. **STOP and wait for manual approval.**
-4. **Execute**: Only after user confirmation, call \`create_task\` for every item in the plan.
-5. **Handoff**: Once all tasks are created, the Reviewer and Engineer agents can begin. The Reviewer should call \`await_engineer_update\` and the Engineer should call \`await_reviewer_update\`.
+1. **Initialize**: Determine the workspace root path. If this is a new repository, call `create_project` to register it using the absolute path.
+2. **Epic Planning**: For the user's high-level request, call `propose_feature` to define the technical specifications and acceptance criteria.
+3. **Decompose**: Break the feature into small, atomic, sequential tasks (e.g., `db-setup` -> `auth-api` -> `login-ui`).
+4. **Validate**: Present the proposed list of tasks to the user. **STOP and wait for manual approval.**
+5. **Execute**: Only after user confirmation, call `create_task` for every item in the plan. You must pass the `feature_id` from step 2. This creates the Genesis node in the ledger.
+6. **Handoff**: Once all tasks are created, the Reviewer and Engineer agents can begin. The Reviewer should call `await_engineer_update` and the Engineer should call `await_reviewer_update`.

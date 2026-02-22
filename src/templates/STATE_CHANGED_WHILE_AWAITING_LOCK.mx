@@ -1,0 +1,10 @@
+# STATE MOVED FORWARD
+
+⚠️ **RACE CONDITION DETECTED** ⚠️
+Your submission was rejected by the database because the state moved forward while you were generating your response. 
+The other agent beat you to the ledger.
+
+Here is the current true state of the ledger for this task:
+{{ newHead | dump }}
+
+Please review the new context, discard your previous submission, and await your next valid assignment.
